@@ -1,0 +1,65 @@
+{
+  "name": "js13k-template",
+  "version": "1.0.0",
+  "description": "A modern build system for js13k games with live reloading and optimization",
+  "main": "build.js",
+  "scripts": {
+    "build": "node build.js",
+    "build:release": "node build.js --release",
+    "build:watch": "node build.js --watch",
+    "build:live": "node build.js --watch --release",
+    "build:project": "node build.js --project=mygame",
+    "build:project:release": "node build.js --project=mygame --release",
+    "clean": "node -e \"require('fs-extra').removeSync('target'); require('fs-extra').removeSync('build')\"",
+    "dev": "node build.js --watch --verbose",
+    "start": "node build.js --watch --release --verbose"
+  },
+  "keywords": [
+    "js13k",
+    "game",
+    "build",
+    "minification",
+    "optimization",
+    "live-reload",
+    "esbuild",
+    "html-minifier"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/js13k-template.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/js13k-template/issues"
+  },
+  "homepage": "https://github.com/yourusername/js13k-template#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "archiver": "^6.0.1",
+    "chokidar": "^3.5.3",
+    "esbuild": "^0.19.0",
+    "fs-extra": "^11.1.1",
+    "html-minifier-terser": "^7.2.0"
+  },
+  "devDependencies": {},
+  "peerDependencies": {},
+  "optionalDependencies": {},
+  "bundleDependencies": [],
+  "files": [
+    "src/**/*",
+    "build.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "directories": {
+    "lib": "src",
+    "build": "build",
+    "dist": "target"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+} 
