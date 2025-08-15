@@ -63,7 +63,8 @@ async function processJsFile(filePath) {
             entryPoints: [filePath],
             outfile: filePath,
             minify: true,
-            bundle: false
+            bundle: false,
+            allowOverwrite: true
         });
         
         log(`✅ Processed JS: ${path.basename(filePath)}`, 'info');
@@ -84,7 +85,8 @@ async function processCssFile(filePath) {
             entryPoints: [filePath],
             outfile: filePath,
             minify: true,
-            bundle: false
+            bundle: false,
+            allowOverwrite: true
         });
         
         log(`✅ Processed CSS: ${path.basename(filePath)}`, 'info');
