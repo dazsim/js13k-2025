@@ -1,6 +1,9 @@
 // Black Cat in Space - js13k 2025 Entry
 // A space shooter game featuring a black cat pilot with state management
 
+function lerp(start, end, t) {
+    return start + (end - start) * t;
+}
 // Base State class for all game states
 class GameState {
     constructor(game) {
@@ -46,7 +49,8 @@ class Game {
             score: 0,
             lives: 3,
             level: 1,
-            highScore: 0
+            highScore: 0,
+            metal: 0 // Metal collected from asteroids
         };
         
         // Game objects (for gameplay state)
@@ -55,11 +59,17 @@ class Game {
         this.enemies = [];
         this.stars = [];
         this.particles = [];
+        this.metal = [];
         
         this.keys = {};
         this.lastTime = 0;
         this.enemySpawnTimer = 0;
         this.starSpawnTimer = 0;
+        
+        // Frame rate tracking
+        this.frameCount = 0;
+        this.fps = 0;
+        this.fpsTimer = 0;
         
         this.init();
     }
@@ -151,6 +161,15 @@ class Game {
         const deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
         
+        // Calculate FPS
+        this.frameCount++;
+        this.fpsTimer += deltaTime;
+        if (this.fpsTimer >= 1000) { // Update FPS every second
+            this.fps = this.frameCount;
+            this.frameCount = 0;
+            this.fpsTimer = 0;
+        }
+        
         this.update(deltaTime);
         this.render();
         
@@ -166,6 +185,7 @@ class MenuState extends GameState {
         this.options = ['Play Game', 'Settings', 'Shop', 'High Score'];
         this.keyCooldown = 0;
         this.cooldownTime = 200; // 0.1 seconds in milliseconds
+        this.enterCooldown = 0; // Will be set in enter() method
     }
     
     enter() {
@@ -288,6 +308,7 @@ class GameplayState extends GameState {
         this.game.bullets = [];
         this.game.enemies = [];
         this.game.particles = [];
+        this.game.metal = [];
         
         // Reset timers
         this.game.enemySpawnTimer = 0;
@@ -335,6 +356,12 @@ class GameplayState extends GameState {
             return particle.life > 0;
         });
         
+        // Update metal drops
+        this.game.metal = this.game.metal.filter(metal => {
+            metal.update(deltaTime);
+            return !metal.collected;
+        });
+        
         // Spawn enemies
         this.game.enemySpawnTimer += deltaTime;
         if (this.game.enemySpawnTimer > 1000 / this.game.gameData.level) {
@@ -372,6 +399,9 @@ class GameplayState extends GameState {
                     this.game.gameData.score += 100;
                     this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                     
+                    // Create metal drop
+                    this.createMetalDrop(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                    
                     // Level up every 1000 points
                     if (this.game.gameData.score % 1000 === 0) {
                         this.game.gameData.level++;
@@ -384,8 +414,21 @@ class GameplayState extends GameState {
         this.game.enemies.forEach((enemy, index) => {
             if (this.checkCollision(this.game.player, enemy)) {
                 this.game.enemies.splice(index, 1);
-                this.game.gameData.lives--;
                 this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                
+                // Use shield first, then lives
+                if (this.game.player.shieldLevel > 0) {
+                    this.game.player.shieldLevel--;
+                    // Reset recharge timer when shield is hit
+                    this.game.player.shieldRechargeTimer = 0;
+                } else {
+                    this.game.gameData.lives--;
+                }
+                
+                // Trigger hit effects on player
+                this.game.player.hit();
+                // Decloak immediately when hit
+                this.game.player.decloak();
                 
                 if (this.game.gameData.lives <= 0) {
                     this.gameOver = true;
@@ -403,8 +446,17 @@ class GameplayState extends GameState {
     }
     
     createExplosion(x, y) {
-        for (let i = 0; i < 8; i++) {
-            this.game.particles.push(new Particle(x, y, Math.random() * 360));
+        for (let i = 0; i < 12; i++) { // More particles
+            this.game.particles.push(new AsteroidExplosion(x, y, Math.random() * 360));
+        }
+    }
+    
+    createMetalDrop(x, y) {
+        // 70% chance to drop metal
+        if (Math.random() < 0.7) {
+            const metal = new Metal(x, y);
+            metal.game = this.game; // Reference to game for collection
+            this.game.metal.push(metal);
         }
     }
     
@@ -418,6 +470,9 @@ class GameplayState extends GameState {
         
         // Draw particles
         this.game.particles.forEach(particle => particle.render(ctx));
+        
+        // Draw metal drops
+        this.game.metal.forEach(metal => metal.render(ctx));
         
         // Draw enemies
         this.game.enemies.forEach(enemy => enemy.render(ctx));
@@ -447,8 +502,17 @@ class GameplayState extends GameState {
         // Draw level
         ctx.fillText(`Level: ${this.game.gameData.level}`, 20, 90);
         
+        // Draw metal count
+        ctx.fillText(`Metal: ${this.game.gameData.metal}`, 20, 120);
+        
+        // Draw FPS below metal count
+        ctx.fillText(`FPS: ${this.game.fps}`, 20, 150);
+        
         // Draw cloaking bar
         this.renderCloakingBar(ctx);
+        
+        // Draw shield bar
+        this.renderShieldBar(ctx);
     }
     
     renderCloakingBar(ctx) {
@@ -477,6 +541,50 @@ class GameplayState extends GameState {
         ctx.font = '14px monospace';
         ctx.textAlign = 'center';
         ctx.fillText('CLOAK', this.game.width / 2, barY + 15);
+    }
+    
+    renderShieldBar(ctx) {
+        const barWidth = this.game.width / 3;
+        const barHeight = 20;
+        const barX = (this.game.width - barWidth) / 2;
+        const barY = 50; // Below the cloaking bar
+        
+        // Draw background bar
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Get shield info dynamically
+        const maxShield = this.game.player.maxShieldLevel;
+        const currentShield = this.game.player.shieldLevel;
+        const segmentWidth = barWidth / maxShield;
+        
+        // Draw shield segments (dynamic number of segments)
+        for (let i = 0; i < currentShield; i++) {
+            ctx.fillStyle = '#00ff00'; // Green for shield
+            ctx.fillRect(barX + (i * segmentWidth), barY, segmentWidth, barHeight);
+        }
+        
+        // Draw segment dividers (dynamic number of dividers)
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 1;
+        for (let i = 1; i < maxShield; i++) {
+            const x = barX + (i * segmentWidth);
+            ctx.beginPath();
+            ctx.moveTo(x, barY);
+            ctx.lineTo(x, barY + barHeight);
+            ctx.stroke();
+        }
+        
+        // Draw border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        
+        // Draw label
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('SHIELD', this.game.width / 2, barY + 15);
     }
 }
 
@@ -663,7 +771,7 @@ class ShopState extends GameState {
     constructor(game) {
         super(game);
         this.selectedOption = 0;
-        this.options = ['Test Shop Item', 'Main Menu'];
+        this.options = ['Shield Upgrade (50 Metal)', 'Speed Boost (30 Metal)', 'Main Menu'];
         this.keyCooldown = 0;
         this.cooldownTime = 200; // 0.2 seconds in milliseconds
         this.enterCooldown = 0; // Will be set in enter() method
@@ -703,6 +811,11 @@ class ShopState extends GameState {
         // Draw subtitle
         ctx.font = '24px monospace';
         ctx.fillText('Purchase Upgrades', this.game.width / 2, 200);
+        
+        // Draw metal count
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '20px monospace';
+        ctx.fillText(`Metal: ${this.game.gameData.metal}`, this.game.width / 2, 250);
         
         // Draw options
         ctx.font = '20px monospace';
@@ -748,11 +861,26 @@ class ShopState extends GameState {
     
     selectOption() {
         switch (this.selectedOption) {
-            case 0: // Test Shop Item
-                // Could add shop functionality here
-                console.log('Test shop item selected');
+            case 0: // Shield Upgrade
+                if (this.game.gameData.metal >= 50) {
+                    this.game.gameData.metal -= 50;
+                    this.game.player.maxShieldLevel++;
+                    this.game.player.shieldLevel = this.game.player.maxShieldLevel; // Refill shield
+                    console.log('Shield upgraded!');
+                } else {
+                    console.log('Not enough metal!');
+                }
                 break;
-            case 1: // Main Menu
+            case 1: // Speed Boost
+                if (this.game.gameData.metal >= 30) {
+                    this.game.gameData.metal -= 30;
+                    this.game.player.speed += 50;
+                    console.log('Speed boosted!');
+                } else {
+                    console.log('Not enough metal!');
+                }
+                break;
+            case 2: // Main Menu
                 this.game.goBack();
                 break;
         }
@@ -776,6 +904,20 @@ class Player {
         this.cloakDelay = 5000; // 5 seconds to start cloaking
         this.cloakDuration = 5000; // 5 seconds to fully cloak
         this.isCloaked = false;
+        
+        // Shield system
+        this.shieldLevel = 4; // 4 hit points
+        this.maxShieldLevel = 4;
+        this.shieldRechargeTimer = 0;
+        this.shieldRechargeDelay = 10000; // 10 seconds per shield point
+        
+        // Hit effects
+        this.isHit = false;
+        this.hitTimer = 0;
+        this.hitDuration = 4000; // 4 seconds of hit effects
+        this.blinkInterval = 500; // 0.5 seconds between blinks
+        this.blinkTimer = 0;
+        this.isVisible = true; // For blinking effect
     }
     
     update(deltaTime, keys, canvasWidth) {
@@ -801,6 +943,31 @@ class Player {
         
         // Update cloaking
         this.updateCloaking(deltaTime);
+        
+        // Update shield
+        this.updateShield(deltaTime);
+        
+        // Update hit effects
+        this.updateHitEffects(deltaTime);
+    }
+    
+    updateHitEffects(deltaTime) {
+        if (this.isHit) {
+            this.hitTimer += deltaTime;
+            this.blinkTimer += deltaTime;
+            
+            // Handle blinking
+            if (this.blinkTimer >= this.blinkInterval) {
+                this.isVisible = !this.isVisible;
+                this.blinkTimer = 0;
+            }
+            
+            // End hit effects after duration
+            if (this.hitTimer >= this.hitDuration) {
+                this.isHit = false;
+                this.isVisible = true;
+            }
+        }
     }
     
     updateCloaking(deltaTime) {
@@ -821,11 +988,48 @@ class Player {
         this.isCloaked = false;
     }
     
+    updateShield(deltaTime) {
+        // Recharge shield over time
+        if (this.shieldLevel < this.maxShieldLevel) {
+            this.shieldRechargeTimer += deltaTime;
+            if (this.shieldRechargeTimer >= this.shieldRechargeDelay) {
+                this.shieldLevel++;
+                this.shieldRechargeTimer = 0;
+            }
+        }
+    }
+    
+    hit() {
+        this.isHit = true;
+        this.hitTimer = 0;
+        this.blinkTimer = 0;
+        this.isVisible = true;
+        
+        // Create hit sparks
+        this.createHitSparks();
+    }
+    
+    createHitSparks() {
+        // Create multiple sparks from the ship
+        for (let i = 0; i < 12; i++) {
+            const angle = Math.random() * 360;
+            const speed = Math.random() * 3 + 2;
+            const x = this.x + this.width / 2;
+            const y = this.y + this.height / 2;
+            game.particles.push(new HitSpark(x, y, angle, speed));
+        }
+    }
+    
     shoot() {
         game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2));
     }
     
     render(ctx) {
+        // Don't render if hit and blinking
+        if (this.isHit && !this.isVisible) {
+            return;
+        }
+        
         // Apply cloaking effect
         if (this.isCloaked) {
             ctx.globalAlpha = 1 - this.cloakLevel;
@@ -877,33 +1081,241 @@ class Player {
 }
 
 class Enemy {
-    constructor(x, y, level) {
+    constructor(x, y, level, enemyType = 0) {
         this.x = x;
         this.y = y;
         this.width = 30;
         this.height = 30;
         this.speed = 100 + level * 20;
         this.health = 1;
+        this.enemyType = enemyType;
+
+        // Rotation properties - much slower, frame-rate independent
+        this.rotation = Math.random() * 360; // Random starting orientation
+        this.rotationSpeed = (Math.random() - 0.5) * 0.5; // Random rotation speed (-0.25 to +0.25 degrees per second)
+        if (enemyType === 0) {
+            // Randomize asteroid design
+            this.asteroidType = Math.floor(Math.random() * 4); // 0-3 different types
+            this.sizeVariation = Math.random() * 0.4 + 0.8; // 0.8x to 1.2x size
+            this.colorVariation = Math.random() * 0.3 + 0.85; // 0.85x to 1.15x brightness
+            this.detailLevel = Math.floor(Math.random() * 3) + 2; // 2-4 detail layers
+        }
     }
     
     update(deltaTime) {
-        // Move horizontally for side-scroller
-        this.x -= this.speed * deltaTime / 1000;
+        if (this.enemyType === 0) {
+            // Move horizontally for side-scroller
+            this.x -= this.speed * deltaTime / 1000;
+            
+            // Update rotation - frame-rate independent
+            this.rotation += this.rotationSpeed * deltaTime / 1000;
+            if (this.rotation > 360) this.rotation -= 360;
+            if (this.rotation < 0) this.rotation += 360;
+        }
+        // mouse
+        if (this.enemyType === 1) {
+            // Move horizontally for side-scroller
+            this.x -= this.speed * deltaTime / 1000;
+
+            // lerp to player
+            this.x = lerp(this.x, player.x, deltaTime / 1000);
+            this.y = lerp(this.y, player.y, deltaTime / 1000);
+        }
     }
     
     render(ctx) {
-        // Draw grey asteroid
-        ctx.fillStyle = '#808080';
-        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // Save current context state
+        ctx.save();
+        if (this.enemyType === 0) {
+            // Move to asteroid center and rotate
+            ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+            ctx.rotate(this.rotation * Math.PI / 180);
+            
+            // Apply size variation
+            const scaledWidth = this.width * this.sizeVariation;
+            const scaledHeight = this.height * this.sizeVariation;
+            
+            // Draw different asteroid types
+            switch (this.asteroidType) {
+                case 0: // Square asteroid
+                    this.drawSquareAsteroid(ctx, scaledWidth, scaledHeight);
+                    break;
+                case 1: // Diamond asteroid
+                    this.drawDiamondAsteroid(ctx, scaledWidth, scaledHeight);
+                    break;
+                case 2: // Octagon asteroid
+                    this.drawOctagonAsteroid(ctx, scaledWidth, scaledHeight);
+                    break;
+                case 3: // Irregular asteroid
+                    this.drawIrregularAsteroid(ctx, scaledWidth, scaledHeight);
+                    break;
+            }
+        }
         
-        // Asteroid details - darker grey
-        ctx.fillStyle = '#404040';
-        ctx.fillRect(this.x + 5, this.y + 5, 20, 20);
+        // Restore context state
+        ctx.restore();
+    }
+    
+    drawSquareAsteroid(ctx, width, height) {
+        // Base color with variation
+        const baseColor = this.adjustColor('#808080', this.colorVariation);
+        ctx.fillStyle = baseColor;
+        ctx.fillRect(-width / 2, -height / 2, width, height);
         
-        // Asteroid highlights - lighter grey
-        ctx.fillStyle = '#c0c0c0';
-        ctx.fillRect(this.x + 8, this.y + 8, 4, 4);
-        ctx.fillRect(this.x + 18, this.y + 8, 4, 4);
+        // Add random detail layers
+        for (let i = 0; i < this.detailLevel; i++) {
+            const detailSize = (width * 0.3) - (i * width * 0.1);
+            const detailX = (Math.random() - 0.5) * width * 0.4;
+            const detailY = (Math.random() - 0.5) * height * 0.4;
+            
+            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
+            ctx.fillRect(-detailSize / 2 + detailX, -detailSize / 2 + detailY, detailSize, detailSize);
+        }
+        
+        // Add highlights
+        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
+        ctx.fillRect(-width / 2 + 2, -height / 2 + 2, 4, 4);
+        ctx.fillRect(width / 2 - 6, -height / 2 + 2, 4, 4);
+    }
+    
+    drawDiamondAsteroid(ctx, width, height) {
+        // Base diamond shape
+        const baseColor = this.adjustColor('#808080', this.colorVariation);
+        ctx.fillStyle = baseColor;
+        ctx.beginPath();
+        ctx.moveTo(0, -height / 2);
+        ctx.lineTo(width / 2, 0);
+        ctx.lineTo(0, height / 2);
+        ctx.lineTo(-width / 2, 0);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add detail layers
+        for (let i = 0; i < this.detailLevel; i++) {
+            const detailSize = (width * 0.25) - (i * width * 0.08);
+            const detailX = (Math.random() - 0.5) * width * 0.3;
+            const detailY = (Math.random() - 0.5) * height * 0.3;
+            
+            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
+            ctx.beginPath();
+            ctx.moveTo(detailX, detailY - detailSize / 2);
+            ctx.lineTo(detailX + detailSize / 2, detailY);
+            ctx.lineTo(detailX, detailY + detailSize / 2);
+            ctx.lineTo(detailX - detailSize / 2, detailY);
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Add highlights
+        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
+        ctx.fillRect(-2, -height / 2 + 2, 4, 4);
+        ctx.fillRect(width / 2 - 6, -2, 4, 4);
+    }
+    
+    drawOctagonAsteroid(ctx, width, height) {
+        // Base octagon shape
+        const baseColor = this.adjustColor('#808080', this.colorVariation);
+        ctx.fillStyle = baseColor;
+        ctx.beginPath();
+        const sides = 8;
+        for (let i = 0; i < sides; i++) {
+            const angle = (i * Math.PI * 2) / sides;
+            const x = Math.cos(angle) * width / 2;
+            const y = Math.sin(angle) * height / 2;
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add detail layers
+        for (let i = 0; i < this.detailLevel; i++) {
+            const detailSize = (width * 0.2) - (i * width * 0.06);
+            const detailX = (Math.random() - 0.5) * width * 0.25;
+            const detailY = (Math.random() - 0.5) * height * 0.25;
+            
+            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
+            ctx.beginPath();
+            for (let j = 0; j < sides; j++) {
+                const angle = (j * Math.PI * 2) / sides;
+                const x = Math.cos(angle) * detailSize / 2 + detailX;
+                const y = Math.sin(angle) * detailSize / 2 + detailY;
+                if (j === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+        
+        // Add highlights
+        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
+        ctx.fillRect(-2, -height / 2 + 2, 4, 4);
+        ctx.fillRect(width / 2 - 6, -2, 4, 4);
+    }
+    
+    drawIrregularAsteroid(ctx, width, height) {
+        // Base irregular shape
+        const baseColor = this.adjustColor('#808080', this.colorVariation);
+        ctx.fillStyle = baseColor;
+        ctx.beginPath();
+        
+        // Create irregular polygon with random points
+        const points = [];
+        const numPoints = 6 + Math.floor(Math.random() * 4); // 6-9 points
+        
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i * Math.PI * 2) / numPoints;
+            const radius = (width / 2) * (0.7 + Math.random() * 0.6); // Vary radius
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            points.push({ x, y });
+        }
+        
+        // Draw the irregular shape
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        
+        // Add random detail craters
+        for (let i = 0; i < this.detailLevel; i++) {
+            const craterSize = Math.random() * width * 0.15 + width * 0.05;
+            const craterX = (Math.random() - 0.5) * width * 0.6;
+            const craterY = (Math.random() - 0.5) * height * 0.6;
+            
+            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
+            ctx.beginPath();
+            ctx.arc(craterX, craterY, craterSize, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Add highlights
+        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
+        ctx.fillRect(-2, -height / 2 + 2, 4, 4);
+        ctx.fillRect(width / 2 - 6, -2, 4, 4);
+    }
+    
+    adjustColor(baseColor, variation) {
+        // Simple color adjustment - could be made more sophisticated
+        if (baseColor === '#808080') {
+            const gray = Math.floor(128 * variation);
+            return `rgb(${gray}, ${gray}, ${gray})`;
+        } else if (baseColor === '#404040') {
+            const gray = Math.floor(64 * variation);
+            return `rgb(${gray}, ${gray}, ${gray})`;
+        } else if (baseColor === '#c0c0c0') {
+            const gray = Math.floor(192 * variation);
+            return `rgb(${gray}, ${gray}, ${gray})`;
+        }
+        return baseColor;
     }
 }
 
@@ -970,6 +1382,120 @@ class Particle {
         ctx.fillStyle = '#ffaa00';
         ctx.fillRect(this.x, this.y, 3, 3);
         ctx.globalAlpha = 1;
+    }
+}
+
+class HitSpark {
+    constructor(x, y, angle, speed) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * speed;
+        this.vy = Math.sin(angle * Math.PI / 180) * speed;
+        this.life = 1;
+        this.decay = 0.03;
+        this.size = Math.random() * 3 + 2; // Bigger than regular particles
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = '#ffff00'; // Yellow sparks
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+    }
+}
+
+class AsteroidExplosion {
+    constructor(x, y, angle) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * 3; // Faster than regular particles
+        this.vy = Math.sin(angle * Math.PI / 180) * 3;
+        this.life = 1;
+        this.decay = 0.015; // Slower decay for longer-lasting effect
+        this.size = Math.random() * 4 + 3; // Bigger than regular particles
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = '#ffff00'; // Yellow explosion particles
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+    }
+}
+
+class Metal {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 8;
+        this.height = 8;
+        this.collected = false;
+        this.collectRadius = 40; // Distance player needs to be to collect (doubled from 20)
+        this.floatOffset = 0;
+        this.floatSpeed = 2; // Speed of floating animation
+        this.driftSpeed = 50; // Speed at which metal drifts left
+    }
+    
+    update(deltaTime) {
+        // Floating animation
+        this.floatOffset += this.floatSpeed * deltaTime / 1000;
+        if (this.floatOffset > Math.PI * 2) {
+            this.floatOffset -= Math.PI * 2;
+        }
+        
+        // Drift toward left side of screen
+        this.x -= this.driftSpeed * deltaTime / 1000;
+        
+        // Check if player is close enough to collect
+        if (!this.collected && this.game && this.game.player) {
+            const dx = this.x - this.game.player.x;
+            const dy = this.y - this.game.player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < this.collectRadius) {
+                this.collect();
+            }
+        }
+    }
+    
+    collect() {
+        if (!this.collected) {
+            this.collected = true;
+            this.game.gameData.metal++;
+            // Could add collection sound or effect here
+        }
+    }
+    
+    render(ctx) {
+        if (this.collected) return;
+        
+        // Floating animation
+        const floatY = this.y + Math.sin(this.floatOffset) * 3;
+        
+        // Draw metal as a small grey/silver square with shine
+        ctx.fillStyle = '#c0c0c0'; // Silver base
+        ctx.fillRect(this.x, floatY, this.width, this.height);
+        
+        // Add shine effect
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(this.x + 1, floatY + 1, 3, 3);
+        
+        // Add border
+        ctx.strokeStyle = '#808080';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(this.x, floatY, this.width, this.height);
     }
 }
 
