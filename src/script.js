@@ -318,11 +318,13 @@ class GameplayState extends GameState {
     initGameplay() {
         // Create initial stars
         for (let i = 0; i < 50; i++) {
-            this.game.stars.push(new Star(
+            const star = new Star(
                 Math.random() * this.game.width,
                 Math.random() * this.game.height,
-                Math.random() * 2 + 1
-            ));
+                Math.random() * 3 + 1
+            );
+            star.game = this.game; // Set the game reference
+            this.game.stars.push(star);
         }
         
         // Create player - positioned on left side for side-scroller
@@ -370,11 +372,11 @@ class GameplayState extends GameState {
         }
         
         // Spawn stars
-        this.game.starSpawnTimer += deltaTime;
+        /*this.game.starSpawnTimer += deltaTime;
         if (this.game.starSpawnTimer > 100) {
             this.game.stars.push(new Star(this.game.width + 10, Math.random() * this.game.height, Math.random() * 2 + 1));
             this.game.starSpawnTimer = 0;
-        }
+        }*/
         
         // Check collisions
         this.checkCollisions();
@@ -1349,9 +1351,11 @@ class Star {
     update(deltaTime) {
         // Move horizontally for side-scroller effect
         this.x -= this.speed * deltaTime / 1000;
+        
+        // Wrap stars to the right side when they go off the left
         if (this.x < -10) {
-            this.x = 810;
-            this.y = Math.random() * 600;
+            this.x += this.game.width + 20; // Wrap to right side with some buffer
+            this.y = Math.random() * this.game.height; // Randomize Y position for variety
         }
     }
     
