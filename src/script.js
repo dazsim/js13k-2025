@@ -50,7 +50,9 @@ class Game {
             lives: 3,
             level: 1,
             highScore: 0,
-            metal: 0 // Metal collected from asteroids
+            metal: 0, // Metal collected from asteroids
+            shopVisited: false, // Track if shop has been visited
+            turboMultiplier: 1 // Global speed multiplier for turbo effect
         };
         
         // Game objects (for gameplay state)
@@ -116,7 +118,7 @@ class Game {
         if (this.currentState === this.states.settings) {
             this.changeState('menu'); // Settings always goes back to main menu
         } else if (this.currentState === this.states.shop) {
-            this.changeState('menu'); // Shop always goes back to main menu
+            this.changeState('gameplay'); // Shop always goes back to gameplay
         } else if (this.currentState === this.states.pause) {
             this.changeState('gameplay'); // Pause always goes back to gameplay
         } else if (this.currentState === this.states.gameOver) {
@@ -182,7 +184,7 @@ class MenuState extends GameState {
     constructor(game) {
         super(game);
         this.selectedOption = 0;
-        this.options = ['Play Game', 'Settings', 'Shop', 'High Score'];
+        this.options = ['Play Game', 'Settings', 'High Score'];
         this.keyCooldown = 0;
         this.cooldownTime = 200; // 0.1 seconds in milliseconds
         this.enterCooldown = 0; // Will be set in enter() method
@@ -229,10 +231,7 @@ class MenuState extends GameState {
             case 1: // Settings
                 this.game.changeState('settings');
                 break;
-            case 2: // Shop
-                this.game.changeState('shop');
-                break;
-            case 3: // High Score
+            case 2: // High Score
                 // Could show high score modal or go to dedicated screen
                 break;
         }
@@ -336,38 +335,38 @@ class GameplayState extends GameState {
     }
     
     getLevelData(level) {
-        const levels = {
-            1: {
-                description: "Destroy 50 asteroids",
-                objectives: { asteroids: 10 },
-                spawnRules: { asteroids: true, mice: false, shops: false },
-                maxEnemies: 5
-            },
-            2: {
-                description: "Destroy 50 asteroids and 15 mice",
-                objectives: { asteroids: 50, mice: 15 },
-                spawnRules: { asteroids: true, mice: true, shops: false },
-                maxEnemies: 6
-            },
-            3: {
-                description: "Destroy 60 asteroids and 20 mice",
-                objectives: { asteroids: 60, mice: 20 },
-                spawnRules: { asteroids: true, mice: true, shops: false },
-                maxEnemies: 7
-            },
-            4: {
-                description: "Destroy 70 asteroids and 25 mice",
-                objectives: { asteroids: 70, mice: 25 },
-                spawnRules: { asteroids: true, mice: true, shops: false },
-                maxEnemies: 8
-            },
-            5: {
-                description: "Collect the floating shop",
-                objectives: { shops: 1 },
-                spawnRules: { asteroids: false, mice: false, shops: true },
-                maxEnemies: 0
-            }
-        };
+                 const levels = {
+             1: {
+                 description: "Survive 50 asteroids",
+                 objectives: { asteroids: 50 },
+                 spawnRules: { asteroids: true, mice: false, shops: false },
+                 maxEnemies: 5
+             },
+             2: {
+                 description: "Survive 50 asteroids and 15 mice",
+                 objectives: { asteroids: 50, mice: 15 },
+                 spawnRules: { asteroids: true, mice: true, shops: false },
+                 maxEnemies: 6
+             },
+             3: {
+                 description: "Survive 60 asteroids and 20 mice",
+                 objectives: { asteroids: 60, mice: 20 },
+                 spawnRules: { asteroids: true, mice: true, shops: false },
+                 maxEnemies: 7
+             },
+             4: {
+                 description: "Survive 70 asteroids and 25 mice",
+                 objectives: { asteroids: 70, mice: 25 },
+                 spawnRules: { asteroids: true, mice: true, shops: false },
+                 maxEnemies: 8
+             },
+             5: {
+                 description: "Collect the floating shop",
+                 objectives: { shops: 1 },
+                 spawnRules: { asteroids: false, mice: false, shops: true },
+                 maxEnemies: 1
+             }
+         };
         
         return levels[level] || levels[1];
     }
@@ -385,7 +384,7 @@ class GameplayState extends GameState {
         }
         
         // Create player - positioned on left side for side-scroller
-        this.game.player = new Player(100, this.game.height / 2);
+        this.game.player = new Player(100, this.game.height / 2, this.game);
     }
     
     update(deltaTime) {
@@ -477,6 +476,16 @@ class GameplayState extends GameState {
         
         if (enemy) {
             enemy.game = this.game;
+            // Set proper dimensions and placement for shop
+            if (type === 'shop') {
+                const shopHeight = this.game.height / 4;
+                const shopWidth = shopHeight * 1.5;
+                enemy.width = shopWidth;
+                enemy.height = shopHeight;
+                enemy.speed = 60; // slow float
+                // Center vertically so it looks intentional
+                enemy.y = (this.game.height - enemy.height) / 2;
+            }
             this.game.enemies.push(enemy);
         }
     }
@@ -523,6 +532,10 @@ class GameplayState extends GameState {
         this.game.bullets.forEach((bullet, bulletIndex) => {
             this.game.enemies.forEach((enemy, enemyIndex) => {
                 if (this.checkCollision(bullet, enemy)) {
+                    // Shop is not destroyable by bullets
+                    if (enemy.enemyType === 2) {
+                        return;
+                    }
                     this.game.bullets.splice(bulletIndex, 1);
                     this.game.enemies.splice(enemyIndex, 1);
                     this.game.gameData.score += 100;
@@ -539,9 +552,23 @@ class GameplayState extends GameState {
             });
         });
         
-        // Player vs Enemy
+                // Player vs Enemy
         this.game.enemies.forEach((enemy, index) => {
             if (this.checkCollision(this.game.player, enemy)) {
+                // Colliding with the shop opens the shop instead of damaging the player
+                if (enemy.enemyType === 2) {
+                    // Only allow shop collision if not already visited
+                    if (!this.game.gameData.shopVisited) {
+                        this.game.enemies.splice(index, 1);
+                        this.game.gameData.shopVisited = true; // Mark shop as visited
+                        this.game.changeState('shop');
+                        return;
+                    } else {
+                        // Shop already visited, just remove it without opening shop
+                        this.game.enemies.splice(index, 1);
+                        return;
+                    }
+                }
                 this.game.enemies.splice(index, 1);
                 this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                 
@@ -583,8 +610,7 @@ class GameplayState extends GameState {
     createMetalDrop(x, y) {
         // 70% chance to drop metal
         if (Math.random() < 0.7) {
-            const metal = new Metal(x, y);
-            metal.game = this.game; // Reference to game for collection
+            const metal = new Metal(x, y, this.game);
             this.game.metal.push(metal);
         }
     }
@@ -642,9 +668,17 @@ class GameplayState extends GameState {
         
         // Draw shield bar
         this.renderShieldBar(ctx);
+        
+        // Draw turbo bar
+        this.renderTurboBar(ctx);
     }
     
     renderCloakingBar(ctx) {
+        // Don't render cloaking bar on shop level (level 5)
+        if (this.game.gameData.level === 5) {
+            return;
+        }
+        
         const barWidth = this.game.width / 3;
         const barHeight = 20;
         const barX = (this.game.width - barWidth) / 2;
@@ -716,9 +750,49 @@ class GameplayState extends GameState {
         ctx.fillText('SHIELD', this.game.width / 2, barY + 15);
     }
     
+    renderTurboBar(ctx) {
+        // Only show turbo bar if player has turbo system
+        if (!this.game.player || this.game.player.turboLevel === 0) {
+            return;
+        }
+        
+        const barWidth = this.game.width / 3;
+        const barHeight = 20;
+        const barX = (this.game.width - barWidth) / 2;
+        const barY = 80; // Below the shield bar
+        
+        // Draw background bar
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Draw turbo charge
+        if (this.game.player.turboCharge > 0) {
+            const chargePercent = this.game.player.turboCharge / this.game.player.maxTurboCharge;
+            ctx.fillStyle = this.game.player.turboActive ? '#ff6600' : '#00ff00'; // Orange when active, green when charged
+            ctx.fillRect(barX, barY, barWidth * chargePercent, barHeight);
+        }
+        
+        // Draw border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        
+        // Draw label
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('TURBO', this.game.width / 2, barY + 15);
+    }
+    
     handleInput(keys) {
         if (keys['Escape']) {
             this.game.changeState('pause');
+        }
+        
+        // Dev controls
+        if (keys['Digit0'] || keys['Key0']) {
+            this.game.gameData.metal += 100;
+            console.log(`Added 100 metal! Total: ${this.game.gameData.metal}`);
         }
         
         // Level jump keys for testing
@@ -940,16 +1014,18 @@ class SettingsState extends GameState {
     }
 }
 
-// Shop State
-class ShopState extends GameState {
-    constructor(game) {
-        super(game);
-        this.selectedOption = 0;
-        this.options = ['Shield Upgrade (50 Metal)', 'Speed Boost (30 Metal)', 'Main Menu'];
-        this.keyCooldown = 0;
-        this.cooldownTime = 200; // 0.2 seconds in milliseconds
-        this.enterCooldown = 0; // Will be set in enter() method
-    }
+        // Shop State
+        class ShopState extends GameState {
+            constructor(game) {
+                super(game);
+                this.selectedOption = 0;
+                this.options = ['Shield Upgrade (50 Metal)', 'Agility Boost (30 Metal)', 'Turbo Thrust (100 Metal)', 'Return to Game'];
+                this.keyCooldown = 0;
+                this.cooldownTime = 200; // 0.2 seconds in milliseconds
+                this.enterCooldown = 0; // Will be set in enter() method
+                this.selectionCooldown = 0; // Cooldown for shop selections
+                this.selectionCooldownTime = 500; // 0.5 seconds between selections
+            }
     
     enter() {
         this.keyCooldown = 0;
@@ -965,6 +1041,10 @@ class ShopState extends GameState {
         // Update enter cooldown
         if (this.enterCooldown > 0) {
             this.enterCooldown -= deltaTime;
+        }
+        // Update selection cooldown
+        if (this.selectionCooldown > 0) {
+            this.selectionCooldown -= deltaTime;
         }
     }
     
@@ -1034,6 +1114,11 @@ class ShopState extends GameState {
     }
     
     selectOption() {
+        // Check selection cooldown
+        if (this.selectionCooldown > 0) {
+            return;
+        }
+        
         switch (this.selectedOption) {
             case 0: // Shield Upgrade
                 if (this.game.gameData.metal >= 50) {
@@ -1041,20 +1126,33 @@ class ShopState extends GameState {
                     this.game.player.maxShieldLevel++;
                     this.game.player.shieldLevel = this.game.player.maxShieldLevel; // Refill shield
                     console.log('Shield upgraded!');
+                    this.selectionCooldown = this.selectionCooldownTime;
                 } else {
                     console.log('Not enough metal!');
                 }
                 break;
-            case 1: // Speed Boost
+            case 1: // Agility Boost
                 if (this.game.gameData.metal >= 30) {
                     this.game.gameData.metal -= 30;
                     this.game.player.speed += 50;
-                    console.log('Speed boosted!');
+                    console.log('Agility boosted!');
+                    this.selectionCooldown = this.selectionCooldownTime;
                 } else {
                     console.log('Not enough metal!');
                 }
                 break;
-            case 2: // Main Menu
+            case 2: // Turbo Thrust
+                if (this.game.gameData.metal >= 100) {
+                    this.game.gameData.metal -= 100;
+                    this.game.player.turboLevel = 1; // Enable turbo
+                    this.game.player.turboCharge = 5; // 5 seconds of turbo
+                    console.log('Turbo thrust acquired!');
+                    this.selectionCooldown = this.selectionCooldownTime;
+                } else {
+                    console.log('Not enough metal!');
+                }
+                break;
+            case 3: // Return to Game
                 this.game.goBack();
                 break;
         }
@@ -1063,7 +1161,7 @@ class ShopState extends GameState {
 
 // Game Classes (Player, Enemy, Bullet, Star, Particle)
 class Player {
-    constructor(x, y) {
+    constructor(x, y, game) {
         this.x = x;
         this.y = y;
         this.width = 40;
@@ -1071,6 +1169,7 @@ class Player {
         this.speed = 300;
         this.shootCooldown = 0;
         this.shootDelay = 200;
+        this.game = game;
         
         // Cloaking system
         this.cloakLevel = 0; // 0 = visible, 1 = fully cloaked
@@ -1092,15 +1191,27 @@ class Player {
         this.blinkInterval = 500; // 0.5 seconds between blinks
         this.blinkTimer = 0;
         this.isVisible = true; // For blinking effect
+        
+        // Turbo system
+        this.turboLevel = 0; // 0 = no turbo, 1 = has turbo
+        this.turboCharge = 0; // Current turbo charge (0-5 seconds)
+        this.maxTurboCharge = 5; // Maximum turbo charge
+        this.turboRechargeRate = 0.1; // Charge per second when not using
+        this.turboActive = false; // Whether turbo is currently active
     }
     
     update(deltaTime, keys, canvasWidth) {
         // Movement - now vertical for side-scroller
+        let currentSpeed = this.speed;
+        if (this.turboActive && this.turboCharge > 0) {
+            currentSpeed *= 2; // Double speed with turbo
+        }
+        
         if (keys['ArrowUp'] || keys['KeyW']) {
-            this.y -= this.speed * deltaTime / 1000;
+            this.y -= currentSpeed * deltaTime / 1000;
         }
         if (keys['ArrowDown'] || keys['KeyS']) {
-            this.y += this.speed * deltaTime / 1000;
+            this.y += currentSpeed * deltaTime / 1000;
         }
         
         // Keep player in bounds (vertical bounds now)
@@ -1115,6 +1226,15 @@ class Player {
             this.decloak();
         }
         
+        // Turbo activation
+        if (keys['ShiftLeft'] || keys['ShiftRight']) {
+            if (this.turboLevel > 0 && this.turboCharge > 0) {
+                this.turboActive = true;
+            }
+        } else {
+            this.turboActive = false;
+        }
+        
         // Update cloaking
         this.updateCloaking(deltaTime);
         
@@ -1123,6 +1243,9 @@ class Player {
         
         // Update hit effects
         this.updateHitEffects(deltaTime);
+        
+        // Update turbo
+        this.updateTurbo(deltaTime);
     }
     
     updateHitEffects(deltaTime) {
@@ -1144,7 +1267,40 @@ class Player {
         }
     }
     
+    updateTurbo(deltaTime) {
+        if (this.turboLevel === 0) return; // No turbo system
+        
+        // Check if turbo is being used
+        if (this.turboActive && this.turboCharge > 0) {
+            this.turboCharge -= deltaTime / 1000; // Drain turbo
+            if (this.turboCharge <= 0) {
+                this.turboCharge = 0;
+                this.turboActive = false;
+            }
+        } else if (!this.turboActive && this.turboCharge < this.maxTurboCharge) {
+            // Recharge turbo when not in use
+            this.turboCharge += this.turboRechargeRate * deltaTime / 1000;
+            if (this.turboCharge > this.maxTurboCharge) {
+                this.turboCharge = this.maxTurboCharge;
+            }
+        }
+        
+        // Update global turbo multiplier
+        if (this.turboActive && this.turboCharge > 0) {
+            this.game.gameData.turboMultiplier = 2; // Double speed for everything
+        } else {
+            this.game.gameData.turboMultiplier = 1; // Normal speed
+        }
+    }
+    
     updateCloaking(deltaTime) {
+        // Don't update cloaking on shop level (level 5)
+        if (this.game && this.game.gameData && this.game.gameData.level === 5) {
+            this.cloakLevel = 0;
+            this.isCloaked = false;
+            return;
+        }
+        
         // Increment cloak timer
         this.cloakTimer += deltaTime;
         
@@ -1190,12 +1346,12 @@ class Player {
             const speed = Math.random() * 3 + 2;
             const x = this.x + this.width / 2;
             const y = this.y + this.height / 2;
-            game.particles.push(new HitSpark(x, y, angle, speed));
+            this.game.particles.push(new HitSpark(x, y, angle, speed));
         }
     }
     
     shoot() {
-        game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2));
+        this.game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2, this.game));
     }
     
     render(ctx) {
@@ -1277,9 +1433,12 @@ class Enemy {
     }
     
     update(deltaTime) {
+        // Apply turbo multiplier to all enemy movement
+        const turboMultiplier = this.game.gameData.turboMultiplier || 1;
+        
         if (this.enemyType === 0) {
             // Move horizontally for side-scroller
-            this.x -= this.speed * deltaTime / 1000;
+            this.x -= this.speed * turboMultiplier * deltaTime / 1000;
             
             // Update rotation - frame-rate independent
             this.rotation += this.rotationSpeed * deltaTime / 1000;
@@ -1289,11 +1448,18 @@ class Enemy {
         // mouse
         if (this.enemyType === 1) {
             // Move horizontally for side-scroller
-            this.x -= this.speed * deltaTime / 1000;
+            this.x -= this.speed * turboMultiplier * deltaTime / 1000;
 
             // lerp to player
             this.x = lerp(this.x, this.game.player.x, deltaTime / 1000);
             this.y = lerp(this.y, this.game.player.y, deltaTime / 1000);
+        }
+        // shop station
+        if (this.enemyType === 2) {
+            // Faster float from right to left with slight bobbing (doubled speed)
+            this.x -= this.speed * 0.6 * turboMultiplier * deltaTime / 1000;
+            this._bobTimer = (this._bobTimer || 0) + deltaTime / 1000;
+            this.y += Math.sin(this._bobTimer * 2) * 0.2;
         }
     }
     
@@ -1327,6 +1493,9 @@ class Enemy {
         } else if (this.enemyType === 1) {
             // Draw mouse enemy
             this.drawMouseEnemy(ctx);
+        } else if (this.enemyType === 2) {
+            // Draw shop enemy
+            this.drawShop(ctx);
         }
         
         // Restore context state
@@ -1359,6 +1528,59 @@ class Enemy {
         ctx.beginPath();
         ctx.arc(this.x + this.width / 2 + 4, this.y + this.height / 2 - 2, 2, 0, Math.PI * 2);
         ctx.fill();
+    }
+    
+    drawShop(ctx) {
+        // Use enemy dimensions as shop size (1/4 screen height set at spawn)
+        const shopWidth = this.width;
+        const shopHeight = this.height;
+        const shopX = this.x;
+        const shopY = this.y;
+        
+        // Main space station body
+        ctx.fillStyle = '#2c3e50';
+        ctx.fillRect(shopX, shopY, shopWidth, shopHeight);
+        
+        // Layer for rounded-corner effect
+        ctx.fillStyle = '#34495e';
+        ctx.fillRect(shopX + 5, shopY, shopWidth - 10, shopHeight);
+        ctx.fillRect(shopX, shopY + 5, shopWidth, shopHeight - 10);
+        
+        // Central structure details
+        ctx.fillStyle = '#1a252f';
+        ctx.fillRect(shopX + shopWidth * 0.2, shopY + shopHeight * 0.1, shopWidth * 0.6, shopHeight * 0.8);
+        
+        // Windows
+        ctx.fillStyle = '#3498db';
+        for (let i = 0; i < 3; i++) {
+            const windowX = shopX + shopWidth * 0.25 + (i * shopWidth * 0.2);
+            const windowY = shopY + shopHeight * 0.2;
+            const windowSize = shopHeight * 0.15;
+            ctx.fillRect(windowX, windowY, windowSize, windowSize);
+        }
+        
+        // SHOP billboard
+        ctx.fillStyle = '#e74c3c';
+        const billboardWidth = shopWidth * 0.8;
+        const billboardHeight = shopHeight * 0.2;
+        const billboardX = shopX + (shopWidth - billboardWidth) / 2;
+        const billboardY = shopY + shopHeight * 0.7;
+        ctx.fillRect(billboardX, billboardY, billboardWidth, billboardHeight);
+        
+        // SHOP text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `${shopHeight * 0.15}px monospace`;
+        ctx.textAlign = 'center';
+        ctx.fillText('SHOP', shopX + shopWidth / 2, billboardY + billboardHeight * 0.7);
+        
+        // Antenna/dish on top
+        ctx.fillStyle = '#95a5a6';
+        ctx.fillRect(shopX + shopWidth * 0.4, shopY - shopHeight * 0.1, shopWidth * 0.2, shopHeight * 0.1);
+        
+        // Docking ports on sides
+        ctx.fillStyle = '#7f8c8d';
+        ctx.fillRect(shopX - shopHeight * 0.05, shopY + shopHeight * 0.3, shopHeight * 0.1, shopHeight * 0.4);
+        ctx.fillRect(shopX + shopWidth, shopY + shopHeight * 0.3, shopHeight * 0.1, shopHeight * 0.4);
     }
     
     drawSquareAsteroid(ctx, width, height) {
@@ -1525,17 +1747,19 @@ class Enemy {
 }
 
 class Bullet {
-    constructor(x, y) {
+    constructor(x, y, game) {
         this.x = x;
         this.y = y;
         this.width = 10;
         this.height = 4;
         this.speed = 500;
+        this.game = game;
     }
     
     update(deltaTime) {
         // Move horizontally for side-scroller
-        this.x += this.speed * deltaTime / 1000;
+        const turboMultiplier = this.game.gameData.turboMultiplier || 1;
+        this.x += this.speed * turboMultiplier * deltaTime / 1000;
     }
     
     render(ctx) {
@@ -1553,7 +1777,8 @@ class Star {
     
     update(deltaTime) {
         // Move horizontally for side-scroller effect
-        this.x -= this.speed * deltaTime / 1000;
+        const turboMultiplier = this.game.gameData.turboMultiplier || 1;
+        this.x -= this.speed * turboMultiplier * deltaTime / 1000;
         
         // Wrap stars to the right side when they go off the left
         if (this.x < -10) {
@@ -1643,7 +1868,7 @@ class AsteroidExplosion {
 }
 
 class Metal {
-    constructor(x, y) {
+    constructor(x, y, game) {
         this.x = x;
         this.y = y;
         this.width = 8;
@@ -1653,6 +1878,7 @@ class Metal {
         this.floatOffset = 0;
         this.floatSpeed = 2; // Speed of floating animation
         this.driftSpeed = 50; // Speed at which metal drifts left
+        this.game = game;
     }
     
     update(deltaTime) {
@@ -1663,7 +1889,8 @@ class Metal {
         }
         
         // Drift toward left side of screen
-        this.x -= this.driftSpeed * deltaTime / 1000;
+        const turboMultiplier = this.game.gameData.turboMultiplier || 1;
+        this.x -= this.driftSpeed * turboMultiplier * deltaTime / 1000;
         
         // Check if player is close enough to collect
         if (!this.collected && this.game && this.game.player) {
