@@ -290,6 +290,9 @@ class GameplayState extends GameState {
     constructor(game) {
         super(game);
         this.gameOver = false;
+        this.levelComplete = false;
+        this.levelObjectives = {};
+        this.currentLevelData = null;
     }
     
     enter() {
@@ -300,10 +303,11 @@ class GameplayState extends GameState {
         
         // Reset game state
         this.gameOver = false;
+        this.levelComplete = false;
         this.game.gameData.lives = 3;
         this.game.gameData.score = 0;
         this.game.gameData.level = 1;
-        
+
         // Clear arrays
         this.game.bullets = [];
         this.game.enemies = [];
@@ -313,6 +317,59 @@ class GameplayState extends GameState {
         // Reset timers
         this.game.enemySpawnTimer = 0;
         this.game.starSpawnTimer = 0;
+
+        this.setupLevel(this.game.gameData.level);
+    }
+
+    setupLevel(level) {
+        this.currentLevelData = this.getLevelData(level);
+        this.levelObjectives = { ...this.currentLevelData.objectives };
+        
+        // Reset spawn counters
+        this.spawnCounts = {
+            asteroids: 0,
+            mice: 0,
+            shops: 0
+        };
+        
+        console.log(`Level ${level}: ${this.currentLevelData.description}`);
+    }
+    
+    getLevelData(level) {
+        const levels = {
+            1: {
+                description: "Destroy 50 asteroids",
+                objectives: { asteroids: 10 },
+                spawnRules: { asteroids: true, mice: false, shops: false },
+                maxEnemies: 5
+            },
+            2: {
+                description: "Destroy 50 asteroids and 15 mice",
+                objectives: { asteroids: 50, mice: 15 },
+                spawnRules: { asteroids: true, mice: true, shops: false },
+                maxEnemies: 6
+            },
+            3: {
+                description: "Destroy 60 asteroids and 20 mice",
+                objectives: { asteroids: 60, mice: 20 },
+                spawnRules: { asteroids: true, mice: true, shops: false },
+                maxEnemies: 7
+            },
+            4: {
+                description: "Destroy 70 asteroids and 25 mice",
+                objectives: { asteroids: 70, mice: 25 },
+                spawnRules: { asteroids: true, mice: true, shops: false },
+                maxEnemies: 8
+            },
+            5: {
+                description: "Collect the floating shop",
+                objectives: { shops: 1 },
+                spawnRules: { asteroids: false, mice: false, shops: true },
+                maxEnemies: 0
+            }
+        };
+        
+        return levels[level] || levels[1];
     }
     
     initGameplay() {
@@ -332,7 +389,7 @@ class GameplayState extends GameState {
     }
     
     update(deltaTime) {
-        if (this.gameOver) return;
+    if (this.gameOver || this.levelComplete) return;
         
         // Update player
         this.game.player.update(deltaTime, this.game.keys, this.game.width);
@@ -364,31 +421,101 @@ class GameplayState extends GameState {
             return !metal.collected;
         });
         
-        // Spawn enemies
-        this.game.enemySpawnTimer += deltaTime;
-        if (this.game.enemySpawnTimer > 1000 / this.game.gameData.level) {
-            this.spawnEnemy();
-            this.game.enemySpawnTimer = 0;
-        }
-        
-        // Spawn stars
-        /*this.game.starSpawnTimer += deltaTime;
-        if (this.game.starSpawnTimer > 100) {
-            this.game.stars.push(new Star(this.game.width + 10, Math.random() * this.game.height, Math.random() * 2 + 1));
-            this.game.starSpawnTimer = 0;
-        }*/
+        // Spawn enemies based on level rules
+        this.spawnEnemies(deltaTime);
         
         // Check collisions
         this.checkCollisions();
         
         // UI is now rendered on canvas
+        // Check level completion
+        this.checkLevelCompletion();
+    }
+
+    spawnEnemies(deltaTime) {
+        if (!this.currentLevelData) return;
+        
+        const rules = this.currentLevelData.spawnRules;
+        const maxEnemies = this.currentLevelData.maxEnemies;
+        
+        // Only spawn if we haven't reached the enemy limit
+        if (this.game.enemies.length < maxEnemies) {
+            this.game.enemySpawnTimer += deltaTime;
+            
+            if (this.game.enemySpawnTimer > 1000) {
+                if (rules.asteroids && this.spawnCounts.asteroids < this.levelObjectives.asteroids) {
+                    this.spawnEnemy('asteroid');
+                } else if (rules.mice && this.spawnCounts.mice < this.levelObjectives.mice) {
+                    this.spawnEnemy('mouse');
+                } else if (rules.shops && this.spawnCounts.shops < this.levelObjectives.shops) {
+                    this.spawnEnemy('shop');
+                }
+                
+                this.game.enemySpawnTimer = 0;
+            }
+        }
     }
     
-    spawnEnemy() {
-        // Spawn from right side for side-scroller
+    spawnEnemy(type) {
         const y = Math.random() * (this.game.height - 40);
-        const enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level);
-        this.game.enemies.push(enemy);
+        let enemy;
+        
+        switch (type) {
+            case 'asteroid':
+                enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level, 0);
+                this.spawnCounts.asteroids++;
+                break;
+            case 'mouse':
+                enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level, 1);
+                this.spawnCounts.mice++;
+                break;
+            case 'shop':
+                enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level, 2);
+                this.spawnCounts.shops++;
+                break;
+        }
+        
+        if (enemy) {
+            enemy.game = this.game;
+            this.game.enemies.push(enemy);
+        }
+    }
+    
+    checkLevelCompletion() {
+        if (!this.currentLevelData) return;
+        
+        let allComplete = true;
+        for (const [type, required] of Object.entries(this.levelObjectives)) {
+            if (this.spawnCounts[type] < required) {
+                allComplete = false;
+                break;
+            }
+        }
+        // Check if any enemies are still on screen
+        const enemiesOnScreen = this.game.enemies.some(enemy => enemy.x > -50);
+
+        if (allComplete && !enemiesOnScreen) {
+            this.levelComplete = true;
+            this.completeLevel();
+        }
+    }
+    
+    completeLevel() {
+        console.log(`Level ${this.game.gameData.level} Complete!`);
+        this.game.gameData.score += 1000; // Bonus for completing level
+        
+        // Wait a moment then advance to next level
+        setTimeout(() => {
+            this.game.gameData.level++;
+            this.setupLevel(this.game.gameData.level);
+            this.levelComplete = false;
+            
+            // Clear existing enemies and reset spawn counts
+            this.game.enemies = [];
+            this.game.particles = [];
+            this.game.metal = [];
+            this.spawnCounts = { asteroids: 0, mice: 0, shops: 0 };
+        }, 2000);
     }
     
     checkCollisions() {
