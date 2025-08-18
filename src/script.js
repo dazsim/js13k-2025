@@ -73,6 +73,14 @@ class Game {
         this.fps = 0;
         this.fpsTimer = 0;
         
+        // Screen shake system
+        this.screenShake = {
+            intensity: 0,
+            duration: 0,
+            maxIntensity: 10,
+            decayRate: 0.85
+        };
+        
         this.init();
     }
     
@@ -120,7 +128,7 @@ class Game {
         } else if (this.currentState === this.states.shop) {
             this.changeState('gameplay'); // Shop always goes back to gameplay
         } else if (this.currentState === this.states.pause) {
-            this.changeState('gameplay'); // Pause always goes back to gameplay
+            this.changeState('gameplay'); // Pause goes back to gameplay
         } else if (this.currentState === this.states.gameOver) {
             this.changeState('menu'); // Game over always goes back to main menu
         }
@@ -151,12 +159,49 @@ class Game {
             this.currentState.update(deltaTime);
             this.currentState.handleInput(this.keys);
         }
+        
+        // Update screen shake
+        this.updateScreenShake(deltaTime);
+    }
+    
+    triggerScreenShake(intensity = 5, duration = 200) {
+        this.screenShake.intensity = Math.min(intensity, this.screenShake.maxIntensity);
+        this.screenShake.duration = duration;
+    }
+    
+    updateScreenShake(deltaTime) {
+        if (this.screenShake.duration > 0) {
+            this.screenShake.duration -= deltaTime;
+            this.screenShake.intensity *= this.screenShake.decayRate;
+            
+            // Stop shake completely when intensity gets very low or duration expires
+            if (this.screenShake.intensity < 0.5 || this.screenShake.duration <= 0) {
+                this.screenShake.intensity = 0;
+                this.screenShake.duration = 0;
+            }
+        }
+    }
+    
+    getScreenShakeOffset() {
+        if (this.screenShake.intensity <= 0) return { x: 0, y: 0 };
+        
+        return {
+            x: (Math.random() - 0.5) * this.screenShake.intensity,
+            y: (Math.random() - 0.5) * this.screenShake.intensity
+        };
     }
     
     render() {
+        // Apply screen shake offset
+        const shakeOffset = this.getScreenShakeOffset();
+        this.ctx.save();
+        this.ctx.translate(shakeOffset.x, shakeOffset.y);
+        
         if (this.currentState) {
             this.currentState.render(this.ctx);
         }
+        
+        this.ctx.restore();
     }
     
     gameLoop(currentTime = 0) {
@@ -299,8 +344,12 @@ class GameplayState extends GameState {
         if (!this.game.player) {
             this.initGameplay();
         }
-        
-        // Reset game state
+        // If returning from pause or shop, resume without resetting
+        if (this.game.previousStateName === 'pause' || this.game.previousStateName === 'shop') {
+            return;
+        }
+
+        // Starting a new run: reset game state
         this.gameOver = false;
         this.levelComplete = false;
         this.game.gameData.lives = 3;
@@ -331,36 +380,39 @@ class GameplayState extends GameState {
             shops: 0
         };
         
+        // Reset enemy pool for new level
+        this.enemyPool = null;
+        
         console.log(`Level ${level}: ${this.currentLevelData.description}`);
     }
     
     getLevelData(level) {
                  const levels = {
-             1: {
+                         1: {
                  description: "Survive 50 asteroids",
                  objectives: { asteroids: 50 },
                  spawnRules: { asteroids: true, mice: false, shops: false },
-                 maxEnemies: 5
+                 maxEnemies: 8
              },
-             2: {
+            2: {
                  description: "Survive 50 asteroids and 15 mice",
                  objectives: { asteroids: 50, mice: 15 },
                  spawnRules: { asteroids: true, mice: true, shops: false },
-                 maxEnemies: 6
+                 maxEnemies: 10
              },
-             3: {
+            3: {
                  description: "Survive 60 asteroids and 20 mice",
                  objectives: { asteroids: 60, mice: 20 },
                  spawnRules: { asteroids: true, mice: true, shops: false },
-                 maxEnemies: 7
+                 maxEnemies: 12
              },
-             4: {
+            4: {
                  description: "Survive 70 asteroids and 25 mice",
                  objectives: { asteroids: 70, mice: 25 },
                  spawnRules: { asteroids: true, mice: true, shops: false },
-                 maxEnemies: 8
+                 maxEnemies: 15
              },
-             5: {
+            5: {
                  description: "Collect the floating shop",
                  objectives: { shops: 1 },
                  spawnRules: { asteroids: false, mice: false, shops: true },
@@ -434,25 +486,62 @@ class GameplayState extends GameState {
     spawnEnemies(deltaTime) {
         if (!this.currentLevelData) return;
         
-        const rules = this.currentLevelData.spawnRules;
-        const maxEnemies = this.currentLevelData.maxEnemies;
+        // Initialize enemy pool if not done yet
+        if (!this.enemyPool) {
+            this.createEnemyPool();
+        }
         
-        // Only spawn if we haven't reached the enemy limit
-        if (this.game.enemies.length < maxEnemies) {
+        // Only spawn if we have enemies in the pool and haven't reached screen limit
+        if (this.enemyPool.length > 0 && this.game.enemies.length < this.currentLevelData.maxEnemies) {
             this.game.enemySpawnTimer += deltaTime;
             
-            if (this.game.enemySpawnTimer > 1000) {
-                if (rules.asteroids && this.spawnCounts.asteroids < this.levelObjectives.asteroids) {
-                    this.spawnEnemy('asteroid');
-                } else if (rules.mice && this.spawnCounts.mice < this.levelObjectives.mice) {
-                    this.spawnEnemy('mouse');
-                } else if (rules.shops && this.spawnCounts.shops < this.levelObjectives.shops) {
-                    this.spawnEnemy('shop');
-                }
-                
+            // Spawn enemies gradually (every 800ms instead of 1000ms for more action)
+            if (this.game.enemySpawnTimer > 800) {
+                this.spawnRandomEnemy();
                 this.game.enemySpawnTimer = 0;
             }
         }
+    }
+    
+    createEnemyPool() {
+        this.enemyPool = [];
+        const rules = this.currentLevelData.spawnRules;
+        const objectives = this.levelObjectives;
+        
+        // Create a mixed pool of enemies based on level rules
+        if (rules.asteroids && objectives.asteroids) {
+            for (let i = 0; i < objectives.asteroids; i++) {
+                this.enemyPool.push({ type: 'asteroid', priority: Math.random() });
+            }
+        }
+        
+        if (rules.mice && objectives.mice) {
+            for (let i = 0; i < objectives.mice; i++) {
+                this.enemyPool.push({ type: 'mouse', priority: Math.random() });
+            }
+        }
+        
+        if (rules.shops && objectives.shops) {
+            for (let i = 0; i < objectives.shops; i++) {
+                this.enemyPool.push({ type: 'shop', priority: Math.random() });
+            }
+        }
+        
+        // Sort by priority to create varied spawning order
+        this.enemyPool.sort((a, b) => a.priority - b.priority);
+        
+        console.log(`Created enemy pool: ${this.enemyPool.length} enemies for level ${this.game.gameData.level}`);
+    }
+    
+    spawnRandomEnemy() {
+        if (this.enemyPool.length === 0) return;
+        
+        // Take the next enemy from the pool
+        const enemyData = this.enemyPool.shift();
+        this.spawnEnemy(enemyData.type);
+        
+        // Add some randomness to spawn timing for more organic feel
+        this.game.enemySpawnTimer += (Math.random() - 0.5) * 200;
     }
     
     spawnEnemy(type) {
@@ -502,8 +591,11 @@ class GameplayState extends GameState {
         }
         // Check if any enemies are still on screen
         const enemiesOnScreen = this.game.enemies.some(enemy => enemy.x > -50);
+        
+        // Check if any metal drops are still on screen
+        const metalOnScreen = this.game.metal.some(metal => metal.x > -20);
 
-        if (allComplete && !enemiesOnScreen) {
+        if (allComplete && !enemiesOnScreen && !metalOnScreen) {
             this.levelComplete = true;
             this.completeLevel();
         }
@@ -543,11 +635,6 @@ class GameplayState extends GameState {
                     
                     // Create metal drop
                     this.createMetalDrop(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
-                    
-                    // Level up every 1000 points
-                    if (this.game.gameData.score % 1000 === 0) {
-                        this.game.gameData.level++;
-                    }
                 }
             });
         });
@@ -585,6 +672,9 @@ class GameplayState extends GameState {
                 this.game.player.hit();
                 // Decloak immediately when hit
                 this.game.player.decloak();
+                
+                // Trigger screen shake
+                this.game.triggerScreenShake(8, 300);
                 
                 if (this.game.gameData.lives <= 0) {
                     this.gameOver = true;
@@ -785,9 +875,7 @@ class GameplayState extends GameState {
     }
     
     handleInput(keys) {
-        if (keys['Escape']) {
-            this.game.changeState('pause');
-        }
+        // Escape handled globally in Game.bindEvents (toggle pause)
         
         // Dev controls
         if (keys['Digit0'] || keys['Key0']) {
@@ -829,6 +917,9 @@ class GameplayState extends GameState {
         this.game.metal = [];
         this.spawnCounts = { asteroids: 0, mice: 0, shops: 0 };
         
+        // Reset enemy pool for new level
+        this.enemyPool = null;
+        
         // Reset timers
         this.game.enemySpawnTimer = 0;
         
@@ -862,7 +953,7 @@ class PauseState extends GameState {
     
     handleInput(keys) {
         if (keys['KeyM']) {
-            this.game.goBack(); // This will go back to gameplay
+            this.game.changeState('menu'); // Go directly to main menu
         }
     }
 }
@@ -2018,3 +2109,4 @@ let game;
 window.addEventListener('load', () => {
     game = new Game();
 });
+
