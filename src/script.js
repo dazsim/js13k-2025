@@ -715,6 +715,51 @@ class GameplayState extends GameState {
         ctx.textAlign = 'center';
         ctx.fillText('SHIELD', this.game.width / 2, barY + 15);
     }
+    
+    handleInput(keys) {
+        if (keys['Escape']) {
+            this.game.changeState('pause');
+        }
+        
+        // Level jump keys for testing
+        if (keys['Digit1'] || keys['Key1']) {
+            this.game.gameData.level = 1;
+            this.setupLevel(1);
+            this.resetLevelState();
+        } else if (keys['Digit2'] || keys['Key2']) {
+            this.game.gameData.level = 2;
+            this.setupLevel(2);
+            this.resetLevelState();
+        } else if (keys['Digit3'] || keys['Key3']) {
+            this.game.gameData.level = 3;
+            this.setupLevel(3);
+            this.resetLevelState();
+        } else if (keys['Digit4'] || keys['Key4']) {
+            this.game.gameData.level = 4;
+            this.setupLevel(4);
+            this.resetLevelState();
+        } else if (keys['Digit5'] || keys['Key5']) {
+            this.game.gameData.level = 5;
+            this.setupLevel(5);
+            this.resetLevelState();
+        }
+    }
+    
+    resetLevelState() {
+        // Reset level completion state
+        this.levelComplete = false;
+        
+        // Clear existing enemies and reset spawn counts
+        this.game.enemies = [];
+        this.game.particles = [];
+        this.game.metal = [];
+        this.spawnCounts = { asteroids: 0, mice: 0, shops: 0 };
+        
+        // Reset timers
+        this.game.enemySpawnTimer = 0;
+        
+        console.log(`Jumped to Level ${this.game.gameData.level}`);
+    }
 }
 
 // Pause State
@@ -1247,8 +1292,8 @@ class Enemy {
             this.x -= this.speed * deltaTime / 1000;
 
             // lerp to player
-            this.x = lerp(this.x, player.x, deltaTime / 1000);
-            this.y = lerp(this.y, player.y, deltaTime / 1000);
+            this.x = lerp(this.x, this.game.player.x, deltaTime / 1000);
+            this.y = lerp(this.y, this.game.player.y, deltaTime / 1000);
         }
     }
     
@@ -1279,10 +1324,41 @@ class Enemy {
                     this.drawIrregularAsteroid(ctx, scaledWidth, scaledHeight);
                     break;
             }
+        } else if (this.enemyType === 1) {
+            // Draw mouse enemy
+            this.drawMouseEnemy(ctx);
         }
         
         // Restore context state
         ctx.restore();
+    }
+    
+    drawMouseEnemy(ctx) {
+        // Draw mouse body (circle with ears)
+        ctx.fillStyle = '#808080'; // Grey
+        
+        // Main body
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2, this.y + this.height / 2, 12, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Ears
+        ctx.fillStyle = '#A0A0A0';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2 - 8, this.y + this.height / 2 - 12, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2 + 8, this.y + this.height / 2 - 12, 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Eyes
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2 - 4, this.y + this.height / 2 - 2, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(this.x + this.width / 2 + 4, this.y + this.height / 2 - 2, 2, 0, Math.PI * 2);
+        ctx.fill();
     }
     
     drawSquareAsteroid(ctx, width, height) {
@@ -1627,6 +1703,86 @@ class Metal {
         ctx.strokeStyle = '#808080';
         ctx.lineWidth = 1;
         ctx.strokeRect(this.x, floatY, this.width, this.height);
+    }
+}
+
+class MouseEnemy extends Enemy {
+    constructor(x, y, level, enemyType) {
+        super(x, y, level, enemyType);
+        this.wormSegments = []; // Array of trail positions
+        this.maxSegments = 8;   // Number of worm segments
+        this.wiggleSpeed = 2;   // How fast it wiggles
+        this.wiggleAmplitude = 30; // How far it wiggles
+        this.baseY = y;         // Original Y position for wave calculation
+    }
+    
+    update(deltaTime) {
+        // Update position with wiggly movement
+        this.x -= this.speed * deltaTime / 1000;
+        this.y = this.baseY + Math.sin(this.x * 0.02) * this.wiggleAmplitude;
+        
+        // Update worm trail
+        this.updateWormTrail();
+    }
+    
+    updateWormTrail() {
+        // Add current position to trail
+        this.wormSegments.unshift({ x: this.x, y: this.y });
+        
+        // Keep only max segments
+        if (this.wormSegments.length > this.maxSegments) {
+            this.wormSegments.pop();
+        }
+    }
+    
+    render(ctx) {
+        // Draw worm segments first (so they appear behind mouse)
+        this.renderWormTrail(ctx);
+        
+        // Draw mouse body
+        this.renderMouseBody(ctx);
+    }
+    
+    renderWormTrail(ctx) {
+        ctx.save();
+        ctx.strokeStyle = '#8B4513'; // Brown color
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        
+        // Draw connected segments
+        for (let i = 0; i < this.wormSegments.length - 1; i++) {
+            const current = this.wormSegments[i];
+            const next = this.wormSegments[i + 1];
+            
+            ctx.beginPath();
+            ctx.moveTo(current.x, current.y);
+            ctx.lineTo(next.x, next.y);
+            ctx.stroke();
+        }
+        
+        ctx.restore();
+    }
+    
+    renderMouseBody(ctx) {
+        // Draw mouse body (circle with ears)
+        ctx.save();
+        ctx.fillStyle = '#808080'; // Grey
+        
+        // Main body
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Ears
+        ctx.fillStyle = '#A0A0A0';
+        ctx.beginPath();
+        ctx.arc(this.x - 5, this.y - 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(this.x + 5, this.y - 8, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.restore();
     }
 }
 
