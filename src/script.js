@@ -1488,12 +1488,36 @@ class Player {
         ctx.lineTo(this.x + this.width - 5, this.y + 25);
         ctx.stroke();
         
-        // Draw white outline when cloaked - fades in opposite to ship fade
+        // Draw rippling cloaking effect when cloaked
         if (this.isCloaked) {
-            ctx.globalAlpha = this.cloakLevel; // Border becomes more visible as ship fades
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(this.x, this.y, this.width, this.height);
+            ctx.globalAlpha = this.cloakLevel; // Effect becomes more visible as ship fades
+            
+            // Create rippling circle effect
+            const centerX = this.x + this.width / 2;
+            const centerY = this.y + this.height / 2;
+            const baseRadius = Math.max(this.width, this.height) * 0.8;
+            
+            // Animate the ripple effect
+            const time = Date.now() * 0.005; // Animation speed
+            const rippleCount = 3; // Number of ripple rings
+            
+            for (let i = 0; i < rippleCount; i++) {
+                const rippleRadius = baseRadius + (i * 15) + Math.sin(time + i * 2) * 8;
+                const rippleAlpha = (this.cloakLevel * 0.6) / (i + 1); // Fade outer rings
+                
+                ctx.globalAlpha = rippleAlpha;
+                ctx.strokeStyle = '#00ffff'; // Cyan color for cloaking effect
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]); // Dashed line effect
+                ctx.lineDashOffset = time * 2; // Animate dash movement
+                
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, rippleRadius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            // Reset line dash
+            ctx.setLineDash([]);
         }
         
         // Reset global alpha
@@ -1541,9 +1565,11 @@ class Enemy {
             // Move horizontally for side-scroller
             this.x -= this.speed * turboMultiplier * deltaTime / 1000;
 
-            // lerp to player
-            this.x = lerp(this.x, this.game.player.x, deltaTime / 1000);
-            this.y = lerp(this.y, this.game.player.y, deltaTime / 1000);
+            // Only home in on player if they're not cloaked
+            if (!this.game.player.isCloaked) {
+                this.x = lerp(this.x, this.game.player.x, deltaTime / 1000);
+                this.y = lerp(this.y, this.game.player.y, deltaTime / 1000);
+            }
         }
         // shop station
         if (this.enemyType === 2) {
