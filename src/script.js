@@ -77,8 +77,8 @@ class Game {
         this.screenShake = {
             intensity: 0,
             duration: 0,
-            maxIntensity: 10,
-            decayRate: 0.85
+            maxIntensity: 100, // Increased from 10 to allow much bigger shakes
+            decayRate: 0.9    // Slower decay for longer-lasting shakes
         };
         
         this.init();
@@ -164,7 +164,7 @@ class Game {
         this.updateScreenShake(deltaTime);
     }
     
-    triggerScreenShake(intensity = 5, duration = 200) {
+    triggerScreenShake(intensity = 100, duration = 400) {
         this.screenShake.intensity = Math.min(intensity, this.screenShake.maxIntensity);
         this.screenShake.duration = duration;
     }
@@ -186,8 +186,8 @@ class Game {
         if (this.screenShake.intensity <= 0) return { x: 0, y: 0 };
         
         return {
-            x: (Math.random() - 0.5) * this.screenShake.intensity,
-            y: (Math.random() - 0.5) * this.screenShake.intensity
+            x: (Math.random() - 0.5) * 2 * this.screenShake.intensity, // Double the range for bigger shake
+            y: (Math.random() - 0.5) * 2 * this.screenShake.intensity  // Double the range for bigger shake
         };
     }
     
