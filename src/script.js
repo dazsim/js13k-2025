@@ -1567,8 +1567,21 @@ class Enemy {
 
             // Only home in on player if they're not cloaked
             if (!this.game.player.isCloaked) {
+                // Calculate angle to face player
+                const dx = this.game.player.x - this.x;
+                const dy = this.game.player.y - this.y;
+                this.targetRotation = Math.atan2(dy, dx) * 180 / Math.PI;
+                
+                // Smoothly rotate to face player
+                const rotationDiff = this.targetRotation - this.rotation;
+                this.rotation += rotationDiff * deltaTime / 1000 * 2; // Smooth rotation
+                
+                // Then home in on player
                 this.x = lerp(this.x, this.game.player.x, deltaTime / 1000);
                 this.y = lerp(this.y, this.game.player.y, deltaTime / 1000);
+            } else {
+                // When cloaked, rotate slowly as if disabled
+                this.rotation += 15 * deltaTime / 1000; // Slow disabled rotation
             }
         }
         // shop station
@@ -1620,31 +1633,61 @@ class Enemy {
     }
     
     drawMouseEnemy(ctx) {
+        // Save context for rotation
+        ctx.save();
+        ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+        ctx.rotate(this.rotation * Math.PI / 180);
+        
         // Draw mouse body (circle with ears)
         ctx.fillStyle = '#808080'; // Grey
         
         // Main body
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2, this.y + this.height / 2, 12, 0, Math.PI * 2);
+        ctx.arc(0, 0, 12, 0, Math.PI * 2);
         ctx.fill();
         
         // Ears
         ctx.fillStyle = '#A0A0A0';
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2 - 8, this.y + this.height / 2 - 12, 6, 0, Math.PI * 2);
+        ctx.arc(-8, -12, 6, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2 + 8, this.y + this.height / 2 - 12, 6, 0, Math.PI * 2);
+        ctx.arc(8, -12, 6, 0, Math.PI * 2);
         ctx.fill();
         
         // Eyes
         ctx.fillStyle = '#000';
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2 - 4, this.y + this.height / 2 - 2, 2, 0, Math.PI * 2);
+        ctx.arc(-4, -2, 2, 0, Math.PI * 2);
         ctx.fill();
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2 + 4, this.y + this.height / 2 - 2, 2, 0, Math.PI * 2);
+        ctx.arc(4, -2, 2, 0, Math.PI * 2);
         ctx.fill();
+        
+        // Status light (blinking green when disabled, red when active)
+        const time = Date.now() * 0.005;
+        if (this.game.player.isCloaked) {
+            // Blinking green light when disabled
+            ctx.fillStyle = Math.sin(time * 3) > 0 ? '#00ff00' : '#003300';
+        } else {
+            // Solid red light when active
+            ctx.fillStyle = '#ff0000';
+        }
+        
+        // Draw status light on top of mouse
+        ctx.beginPath();
+        ctx.arc(0, -8, 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add glow effect to status light
+        ctx.shadowColor = ctx.fillStyle;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, -8, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        ctx.restore();
     }
     
     drawShop(ctx) {
