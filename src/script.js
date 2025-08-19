@@ -186,8 +186,8 @@ class Game {
         if (this.screenShake.intensity <= 0) return { x: 0, y: 0 };
         
         return {
-            x: (Math.random() - 0.5) * 2 * this.screenShake.intensity, // Double the range for bigger shake
-            y: (Math.random() - 0.5) * 2 * this.screenShake.intensity  // Double the range for bigger shake
+            x: (Math.random() - 0.5) * 4 * this.screenShake.intensity, // Double the range for bigger shake
+            y: (Math.random() - 0.5) * 4 * this.screenShake.intensity  // Double the range for bigger shake
         };
     }
     
