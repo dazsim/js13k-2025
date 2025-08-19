@@ -1535,15 +1535,27 @@ class Enemy {
         this.health = 1;
         this.enemyType = enemyType;
 
-        // Rotation properties - much slower, frame-rate independent
+        // Rotation properties - initialize for all enemy types
         this.rotation = Math.random() * 360; // Random starting orientation
-        this.rotationSpeed = (Math.random() - 0.5) * 0.5; // Random rotation speed (-0.25 to +0.25 degrees per second)
+        this.rotationSpeed = 0; // Default no rotation
+        
         if (enemyType === 0) {
+            // Set rotation speed only for asteroids
+            this.rotationSpeed = Math.random() * 60 + 30; // Random rotation speed (30 to 90 degrees per second)
             // Randomize asteroid design
             this.asteroidType = Math.floor(Math.random() * 4); // 0-3 different types
             this.sizeVariation = Math.random() * 0.4 + 0.8; // 0.8x to 1.2x size
             this.colorVariation = Math.random() * 0.3 + 0.85; // 0.85x to 1.15x brightness
             this.detailLevel = Math.floor(Math.random() * 3) + 2; // 2-4 detail layers
+            
+            // Generate fixed detail positions for consistent rendering
+            this.details = [];
+            for (let i = 0; i < this.detailLevel; i++) {
+                this.details.push({
+                    x: (Math.random() - 0.5), // -0.5 to 0.5
+                    y: (Math.random() - 0.5)  // -0.5 to 0.5
+                });
+            }
         }
     }
     
@@ -1605,19 +1617,19 @@ class Enemy {
             const scaledWidth = this.width * this.sizeVariation;
             const scaledHeight = this.height * this.sizeVariation;
             
-            // Draw different asteroid types
+            // Draw different asteroid types using generic method
             switch (this.asteroidType) {
-                case 0: // Square asteroid
-                    this.drawSquareAsteroid(ctx, scaledWidth, scaledHeight);
+                case 0: // Square asteroid (4 sides)
+                    this.drawGenericAsteroid(ctx, scaledWidth, scaledHeight, 4);
                     break;
-                case 1: // Diamond asteroid
-                    this.drawDiamondAsteroid(ctx, scaledWidth, scaledHeight);
+                case 1: // Diamond asteroid (4 sides)
+                    this.drawGenericAsteroid(ctx, scaledWidth, scaledHeight, 4);
                     break;
-                case 2: // Octagon asteroid
-                    this.drawOctagonAsteroid(ctx, scaledWidth, scaledHeight);
+                case 2: // Octagon asteroid (8 sides)
+                    this.drawGenericAsteroid(ctx, scaledWidth, scaledHeight, 8);
                     break;
-                case 3: // Irregular asteroid
-                    this.drawIrregularAsteroid(ctx, scaledWidth, scaledHeight);
+                case 3: // Irregular asteroid (6 sides)
+                    this.drawGenericAsteroid(ctx, scaledWidth, scaledHeight, 6);
                     break;
             }
         } else if (this.enemyType === 1) {
@@ -1742,69 +1754,14 @@ class Enemy {
         ctx.fillRect(shopX - shopHeight * 0.05, shopY + shopHeight * 0.3, shopHeight * 0.1, shopHeight * 0.4);
         ctx.fillRect(shopX + shopWidth, shopY + shopHeight * 0.3, shopHeight * 0.1, shopHeight * 0.4);
     }
-    
-    drawSquareAsteroid(ctx, width, height) {
+
+    drawGenericAsteroid(ctx, width, height, sides = 6) {
         // Base color with variation
         const baseColor = this.adjustColor('#808080', this.colorVariation);
         ctx.fillStyle = baseColor;
-        ctx.fillRect(-width / 2, -height / 2, width, height);
-        
-        // Add random detail layers
-        for (let i = 0; i < this.detailLevel; i++) {
-            const detailSize = (width * 0.3) - (i * width * 0.1);
-            const detailX = (Math.random() - 0.5) * width * 0.4;
-            const detailY = (Math.random() - 0.5) * height * 0.4;
-            
-            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
-            ctx.fillRect(-detailSize / 2 + detailX, -detailSize / 2 + detailY, detailSize, detailSize);
-        }
-        
-        // Add highlights
-        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
-        ctx.fillRect(-width / 2 + 2, -height / 2 + 2, 4, 4);
-        ctx.fillRect(width / 2 - 6, -height / 2 + 2, 4, 4);
-    }
-    
-    drawDiamondAsteroid(ctx, width, height) {
-        // Base diamond shape
-        const baseColor = this.adjustColor('#808080', this.colorVariation);
-        ctx.fillStyle = baseColor;
+
+        // Create a polygon with the given sides
         ctx.beginPath();
-        ctx.moveTo(0, -height / 2);
-        ctx.lineTo(width / 2, 0);
-        ctx.lineTo(0, height / 2);
-        ctx.lineTo(-width / 2, 0);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Add detail layers
-        for (let i = 0; i < this.detailLevel; i++) {
-            const detailSize = (width * 0.25) - (i * width * 0.08);
-            const detailX = (Math.random() - 0.5) * width * 0.3;
-            const detailY = (Math.random() - 0.5) * height * 0.3;
-            
-            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
-            ctx.beginPath();
-            ctx.moveTo(detailX, detailY - detailSize / 2);
-            ctx.lineTo(detailX + detailSize / 2, detailY);
-            ctx.lineTo(detailX, detailY + detailSize / 2);
-            ctx.lineTo(detailX - detailSize / 2, detailY);
-            ctx.closePath();
-            ctx.fill();
-        }
-        
-        // Add highlights
-        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
-        ctx.fillRect(-2, -height / 2 + 2, 4, 4);
-        ctx.fillRect(width / 2 - 6, -2, 4, 4);
-    }
-    
-    drawOctagonAsteroid(ctx, width, height) {
-        // Base octagon shape
-        const baseColor = this.adjustColor('#808080', this.colorVariation);
-        ctx.fillStyle = baseColor;
-        ctx.beginPath();
-        const sides = 8;
         for (let i = 0; i < sides; i++) {
             const angle = (i * Math.PI * 2) / sides;
             const x = Math.cos(angle) * width / 2;
@@ -1818,77 +1775,31 @@ class Enemy {
         ctx.closePath();
         ctx.fill();
         
-        // Add detail layers
-        for (let i = 0; i < this.detailLevel; i++) {
-            const detailSize = (width * 0.2) - (i * width * 0.06);
-            const detailX = (Math.random() - 0.5) * width * 0.25;
-            const detailY = (Math.random() - 0.5) * height * 0.25;
-            
-            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
-            ctx.beginPath();
-            for (let j = 0; j < sides; j++) {
-                const angle = (j * Math.PI * 2) / sides;
-                const x = Math.cos(angle) * detailSize / 2 + detailX;
-                const y = Math.sin(angle) * detailSize / 2 + detailY;
-                if (j === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
+        // Add detail layers using stored positions
+        if (this.details && this.details.length > 0) {
+            for (let i = 0; i < this.detailLevel && i < this.details.length; i++) {
+                const detail = this.details[i];
+                const detailSize = (width * 0.25) - (i * width * 0.08);
+                const detailX = detail.x * width * 0.3;
+                const detailY = detail.y * height * 0.3;
+
+                ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
+                ctx.fillRect(-detailSize / 2 + detailX, -detailSize / 2 + detailY, detailSize, detailSize);
             }
-            ctx.closePath();
-            ctx.fill();
         }
         
-        // Add highlights
+        // Add highlights using stored positions for consistency
         ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
-        ctx.fillRect(-2, -height / 2 + 2, 4, 4);
-        ctx.fillRect(width / 2 - 6, -2, 4, 4);
+        if (this.details && this.details.length > 0) {
+            // Use first two detail positions for highlights, scaled appropriately
+            ctx.fillRect(-2 + this.details[0].x * width * 0.1, -height / 2 + 2 + this.details[0].y * height * 0.1, 4, 4);
+            if (this.details.length > 1) {
+                ctx.fillRect(width / 2 - 6 + this.details[1].x * width * 0.1, -2 + this.details[1].y * height * 0.1, 4, 4);
+            }
+        }
     }
     
-    drawIrregularAsteroid(ctx, width, height) {
-        // Base irregular shape
-        const baseColor = this.adjustColor('#808080', this.colorVariation);
-        ctx.fillStyle = baseColor;
-        ctx.beginPath();
-        
-        // Create irregular polygon with random points
-        const points = [];
-        const numPoints = 6 + Math.floor(Math.random() * 4); // 6-9 points
-        
-        for (let i = 0; i < numPoints; i++) {
-            const angle = (i * Math.PI * 2) / numPoints;
-            const radius = (width / 2) * (0.7 + Math.random() * 0.6); // Vary radius
-            const x = Math.cos(angle) * radius;
-            const y = Math.sin(angle) * radius;
-            points.push({ x, y });
-        }
-        
-        // Draw the irregular shape
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-            ctx.lineTo(points[i].x, points[i].y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        
-        // Add random detail craters
-        for (let i = 0; i < this.detailLevel; i++) {
-            const craterSize = Math.random() * width * 0.15 + width * 0.05;
-            const craterX = (Math.random() - 0.5) * width * 0.6;
-            const craterY = (Math.random() - 0.5) * height * 0.6;
-            
-            ctx.fillStyle = this.adjustColor('#404040', this.colorVariation);
-            ctx.beginPath();
-            ctx.arc(craterX, craterY, craterSize, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        
-        // Add highlights
-        ctx.fillStyle = this.adjustColor('#c0c0c0', this.colorVariation);
-        ctx.fillRect(-2, -height / 2 + 2, 4, 4);
-        ctx.fillRect(width / 2 - 6, -2, 4, 4);
-    }
+
     
     adjustColor(baseColor, variation) {
         // Simple color adjustment - could be made more sophisticated
@@ -2093,85 +2004,7 @@ class Metal {
     }
 }
 
-class MouseEnemy extends Enemy {
-    constructor(x, y, level, enemyType) {
-        super(x, y, level, enemyType);
-        this.wormSegments = []; // Array of trail positions
-        this.maxSegments = 8;   // Number of worm segments
-        this.wiggleSpeed = 2;   // How fast it wiggles
-        this.wiggleAmplitude = 30; // How far it wiggles
-        this.baseY = y;         // Original Y position for wave calculation
-    }
-    
-    update(deltaTime) {
-        // Update position with wiggly movement
-        this.x -= this.speed * deltaTime / 1000;
-        this.y = this.baseY + Math.sin(this.x * 0.02) * this.wiggleAmplitude;
-        
-        // Update worm trail
-        this.updateWormTrail();
-    }
-    
-    updateWormTrail() {
-        // Add current position to trail
-        this.wormSegments.unshift({ x: this.x, y: this.y });
-        
-        // Keep only max segments
-        if (this.wormSegments.length > this.maxSegments) {
-            this.wormSegments.pop();
-        }
-    }
-    
-    render(ctx) {
-        // Draw worm segments first (so they appear behind mouse)
-        this.renderWormTrail(ctx);
-        
-        // Draw mouse body
-        this.renderMouseBody(ctx);
-    }
-    
-    renderWormTrail(ctx) {
-        ctx.save();
-        ctx.strokeStyle = '#8B4513'; // Brown color
-        ctx.lineWidth = 3;
-        ctx.lineCap = 'round';
-        
-        // Draw connected segments
-        for (let i = 0; i < this.wormSegments.length - 1; i++) {
-            const current = this.wormSegments[i];
-            const next = this.wormSegments[i + 1];
-            
-            ctx.beginPath();
-            ctx.moveTo(current.x, current.y);
-            ctx.lineTo(next.x, next.y);
-            ctx.stroke();
-        }
-        
-        ctx.restore();
-    }
-    
-    renderMouseBody(ctx) {
-        // Draw mouse body (circle with ears)
-        ctx.save();
-        ctx.fillStyle = '#808080'; // Grey
-        
-        // Main body
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Ears
-        ctx.fillStyle = '#A0A0A0';
-        ctx.beginPath();
-        ctx.arc(this.x - 5, this.y - 8, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(this.x + 5, this.y - 8, 4, 0, Math.PI * 2);
-        ctx.fill();
-        
-        ctx.restore();
-    }
-}
+
 
 // Start the game when the page loads
 let game;
