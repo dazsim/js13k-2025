@@ -223,6 +223,109 @@ class Game {
         
         requestAnimationFrame((time) => this.gameLoop(time));
     }
+    
+    // Shared Milky Way drawing method
+    drawMilkyWay(ctx) {
+        // Animated Milky Way with noise and detail
+        const time = Date.now() * 0.001; // Animation speed
+        const centerY = this.height * 0.5; // Center the band better
+        const bandHeight = this.height * 0.3; // 30% of screen height
+        
+        ctx.save();
+        
+        // Animate the background layers
+        const offsetX = (time * 20) % this.width; // Move right to left
+        
+        // Draw orange stellar background
+        const stellarGradient = ctx.createLinearGradient(0, centerY - bandHeight/2, 0, centerY + bandHeight/2);
+        stellarGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        stellarGradient.addColorStop(0.2, 'rgba(80, 40, 20, 0.3)');
+        stellarGradient.addColorStop(0.4, 'rgba(120, 60, 30, 0.5)');
+        stellarGradient.addColorStop(0.6, 'rgba(160, 80, 40, 0.6)');
+        stellarGradient.addColorStop(0.8, 'rgba(120, 60, 30, 0.5)');
+        stellarGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        
+        ctx.fillStyle = stellarGradient;
+        ctx.fillRect(offsetX, centerY - bandHeight/2, this.width, bandHeight);
+        ctx.fillRect(offsetX - this.width, centerY - bandHeight/2, this.width, bandHeight);
+        
+        // Add orange noise for stellar background
+        this.addAnimatedNoise(ctx, offsetX, centerY, bandHeight, 'rgba(160, 80, 40, 0.2)', 0.4);
+        
+        // Draw blue galactic plane
+        const planeGradient = ctx.createLinearGradient(0, centerY - bandHeight/2, 0, centerY + bandHeight/2);
+        planeGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        planeGradient.addColorStop(0.1, 'rgba(40, 60, 100, 0.15)');
+        planeGradient.addColorStop(0.3, 'rgba(60, 90, 140, 0.3)');
+        planeGradient.addColorStop(0.5, 'rgba(80, 120, 180, 0.4)');
+        planeGradient.addColorStop(0.7, 'rgba(60, 90, 140, 0.3)');
+        planeGradient.addColorStop(0.9, 'rgba(40, 60, 100, 0.15)');
+        planeGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        
+        ctx.fillStyle = planeGradient;
+        ctx.fillRect(offsetX, centerY - bandHeight/2, this.width, bandHeight);
+        ctx.fillRect(offsetX - this.width, centerY - bandHeight/2, this.width, bandHeight);
+        
+        // Add blue noise for galactic plane
+        this.addAnimatedNoise(ctx, offsetX, centerY, bandHeight, 'rgba(60, 90, 140, 0.1)', 0.3);
+        
+        // Add animated dark dust lanes
+        this.addAnimatedDustLanes(ctx, offsetX, centerY, bandHeight);
+        
+        ctx.restore();
+    }
+    
+    // Helper methods for Milky Way
+    addAnimatedNoise(ctx, offsetX, centerY, bandHeight, color, intensity) {
+        // Add noise texture that moves with the background - restore 2D approach
+        for (let x = 0; x < this.width * 2; x += 8) {
+            for (let y = centerY - bandHeight/2; y < centerY + bandHeight/2; y += 8) {
+                const noiseX = (x + offsetX) * 0.05;
+                const noiseY = y * 0.03;
+                
+                if ((this.simpleNoise(noiseX + noiseY + 42) * 0.5 + 0.5) < 0.3) {
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x + offsetX, y, 8, 8);
+                    ctx.fillRect(x + offsetX - this.width, y, 8, 8);
+                }
+            }
+        }
+    }
+    
+    addAnimatedDustLanes(ctx, offsetX, centerY, bandHeight) {
+        // Create more organic, varied dust lanes with smaller, scattered elements
+        const dustCount = 150; // 10x more dust particles for very dense look
+        
+        // Make dust move slower by using a fraction of offsetX
+        const slowDustOffset = offsetX * 0.3; // Dust moves at 30% speed of background
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        for (let i = 0; i < dustCount; i++) {
+            // Vary the dust particle positions and sizes more naturally
+            const dustX = (slowDustOffset + this.simpleNoise(i * 50) * this.width * 2) % (this.width * 2);
+            const dustY = centerY + (this.simpleNoise(i * 100) * 0.5 - 0.25) * bandHeight * 0.4;
+            const dustSize = this.simpleNoise(i * 150) * 0.5 + 0.5; // 0.5 to 1.0
+            
+            // Only draw if within the Milky Way band
+            if (dustY >= centerY - bandHeight/2 && dustY <= centerY + bandHeight/2) {
+                // Draw smaller, more varied dust particles
+                const particleSize = Math.max(2, dustSize * 8); // 2-10px particles
+                ctx.fillRect(dustX, dustY, particleSize, particleSize);
+                
+                // Draw wrapped version for seamless scrolling
+                if (dustX < this.width) {
+                    ctx.fillRect(dustX + this.width, dustY, particleSize, particleSize);
+                } else {
+                    ctx.fillRect(dustX - this.width, dustY, particleSize, particleSize);
+                }
+            }
+        }
+    }
+    
+    simpleNoise(x) {
+        // Simple pseudo-random noise function using trigonometric approach
+        return Math.sin(x * 12.9898) * Math.cos(x * 78.233) * 43758.5453 % 1;
+    }
 }
 
 // Menu State
@@ -289,7 +392,7 @@ class MenuState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw Milky Way background first (behind everything)
-        this.drawMilkyWay(ctx);
+        this.game.drawMilkyWay(ctx);
         
         // Draw stars background
         this.drawStars(ctx);
@@ -332,163 +435,8 @@ class MenuState extends GameState {
         }
     }
     
-    drawMilkyWay(ctx) {
-        // Use pre-rendered Milky Way pattern for performance
-        if (!this.milkyWayPattern) {
-            this.generateMilkyWayPattern();
-        }
-        
-        // Apply the pattern with proper positioning - center it vertically
-        ctx.save();
-        ctx.translate(0, this.game.height * 0.3); // Center the band better
-        ctx.fillStyle = this.milkyWayPattern;
-        ctx.fillRect(0, 0, this.game.width, this.game.height * 0.5);
-        ctx.restore();
-    }
-    
-    generateMilkyWayPattern() {
-        // Create a canvas to generate the Milky Way pattern
-        const patternCanvas = document.createElement('canvas');
-        const patternCtx = patternCanvas.getContext('2d');
-        
-        // Make it wide enough to tile seamlessly
-        patternCanvas.width = 1024;
-        patternCanvas.height = 512;
-        
-        // Layer 1: Light blue background glow (galactic plane)
-        this.drawGalacticPlane(patternCtx, patternCanvas.width, patternCanvas.height);
-        
-        // Layer 2: Orange/red stellar background
-        this.drawStellarBackground(patternCtx, patternCanvas.width, patternCanvas.height);
-        
-        // Layer 3: Dark foreground overlays (dust lanes, molecular clouds)
-        this.drawDarkOverlays(patternCtx, patternCanvas.width, patternCanvas.height);
-        
-        // Create a repeating pattern
-        this.milkyWayPattern = this.game.ctx.createPattern(patternCanvas, 'repeat-x');
-    }
-    
-    drawGalacticPlane(ctx, width, height) {
-        // Create the light blue background glow of the galactic plane - reduced to 30% of screen
-        const centerY = height * 0.5; // Center it properly
-        const planeHeight = height * 0.3; // Reduce from 0.6 to 0.3 (30% of screen)
-        
-        // Main plane gradient
-        const planeGradient = ctx.createLinearGradient(0, centerY - planeHeight/2, 0, centerY + planeHeight/2);
-        planeGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        planeGradient.addColorStop(0.1, 'rgba(40, 60, 100, 0.2)');   // Very light blue
-        planeGradient.addColorStop(0.3, 'rgba(60, 90, 140, 0.4)');   // Light blue
-        planeGradient.addColorStop(0.5, 'rgba(80, 120, 180, 0.6)');  // Medium blue
-        planeGradient.addColorStop(0.7, 'rgba(60, 90, 140, 0.4)');   // Light blue
-        planeGradient.addColorStop(0.9, 'rgba(40, 60, 100, 0.2)');   // Very light blue
-        planeGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
-        ctx.fillStyle = planeGradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Add subtle blue noise variations
-        this.addNoiseLayer(ctx, width, height, 'rgba(60, 90, 140, 0.1)', 0.3);
-    }
-    
-    drawStellarBackground(ctx, width, height) {
-        // Create the orange/red stellar population background - match the reduced size
-        const centerY = height * 0.25; // Center it properly
-        const stellarHeight = height * 0.4; // Slightly smaller than the blue band
-        
-        // Stellar population gradient
-        const stellarGradient = ctx.createLinearGradient(0, centerY - stellarHeight/2, 0, centerY + stellarHeight/2);
-        stellarGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        stellarGradient.addColorStop(0.2, 'rgba(80, 40, 20, 0.3)');   // Dark red
-        stellarGradient.addColorStop(0.4, 'rgba(120, 60, 30, 0.5)');  // Medium red
-        stellarGradient.addColorStop(0.6, 'rgba(160, 80, 40, 0.6)');  // Bright orange
-        stellarGradient.addColorStop(0.8, 'rgba(120, 60, 30, 0.5)');  // Medium red
-        stellarGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
-        ctx.fillStyle = stellarGradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Add orange/red noise variations
-        this.addNoiseLayer(ctx, width, height, 'rgba(160, 80, 40, 0.2)', 0.4);
-    }
-    
-    drawDarkOverlays(ctx, width, height) {
-        // Create dark foreground overlays (dust lanes, molecular clouds)
-        const centerY = height * 0.5; // Match the centered position
-        
-        // Generate multiple dark dust lanes using noise
-        for (let i = 0; i < 5; i++) {
-            this.drawDustLane(ctx, width, height, centerY, i);
-        }
-        
-        // Add molecular cloud patches
-        this.addMolecularClouds(ctx, width, height, centerY);
-    }
-    
-    drawDustLane(ctx, width, height, centerY, index) {
-        // Create a dark dust lane using noise - restricted to smaller Milky Way band
-        const bandHeight = height * 0.3; // Match the new smaller galactic plane
-        const bandTop = centerY - bandHeight / 2;
-        const bandBottom = centerY + bandHeight / 2;
-        
-        // Calculate lane Y position within the band - tighter spacing for smaller band
-        const laneY = centerY + (index - 2) * 15; // Even closer spacing for smaller band
-        const laneWidth = 100 + Math.random() * 150;
-        const opacity = 0.3 + Math.random() * 0.4;
-        
-        // Only draw if the lane is within the Milky Way band
-        if (laneY >= bandTop && laneY <= bandBottom) {
-            // Generate noise-based lane shape
-            for (let x = 0; x < width; x += 4) {
-                const noise = this.simpleNoise(x * 0.01 + index * 100) * 10; // Further reduced noise range
-                const laneHeight = 6 + Math.random() * 8; // Smaller lanes for smaller band
-                
-                ctx.fillStyle = `rgba(10, 8, 5, ${opacity})`;
-                ctx.fillRect(x, laneY + noise - laneHeight/2, 4, laneHeight);
-            }
-        }
-    }
-    
-    addMolecularClouds(ctx, width, height, centerY) {
-        // Add dark molecular cloud patches - restricted to smaller Milky Way band
-        const cloudCount = 6; // Fewer clouds for smaller band
-        const bandHeight = height * 0.3; // Match the new smaller galactic plane
-        const bandTop = centerY - bandHeight / 2;
-        const bandBottom = centerY + bandHeight / 2;
-        
-        for (let i = 0; i < cloudCount; i++) {
-            const x = Math.random() * width;
-            // Restrict Y position to within the smaller Milky Way band
-            const y = bandTop + Math.random() * bandHeight;
-            const size = 20 + Math.random() * 40; // Smaller clouds for smaller band
-            const opacity = 0.2 + Math.random() * 0.3;
-            
-            const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
-            gradient.addColorStop(0, `rgba(5, 3, 2, ${opacity})`);
-            gradient.addColorStop(0.7, `rgba(8, 5, 3, ${opacity * 0.5})`);
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, width, height);
-        }
-    }
-    
-    addNoiseLayer(ctx, width, height, color, intensity) {
-        // Add subtle noise variations to create texture
-        for (let x = 0; x < width; x += 8) {
-            for (let y = 0; y < height; y += 8) {
-                const noise = this.simpleNoise(x * 0.02 + y * 0.02) * intensity;
-                if (Math.random() < 0.3) { // 30% chance of noise pixel
-                    ctx.fillStyle = color;
-                    ctx.fillRect(x, y, 8, 8);
-                }
-            }
-        }
-    }
-    
-    simpleNoise(x) {
-        // Simple pseudo-random noise function
-        return Math.sin(x * 12.9898) * Math.cos(x * 78.233) * 43758.5453 % 1;
-    }
+
+
 }
 
 // Gameplay State (contains the original game logic)
@@ -898,7 +846,7 @@ class GameplayState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw Milky Way background first (behind everything)
-        this.drawMilkyWay(ctx);
+        this.game.drawMilkyWay(ctx);
         
         // Draw stars
         this.game.stars.forEach(star => star.render(ctx));
@@ -1115,164 +1063,7 @@ class GameplayState extends GameState {
         
         console.log(`Jumped to Level ${this.game.gameData.level}`);
     }
-    
-    drawMilkyWay(ctx) {
-        // Use pre-rendered Milky Way pattern for performance
-        if (!this.milkyWayPattern) {
-            this.generateMilkyWayPattern();
-        }
-        
-        // Apply the pattern with proper positioning - center it vertically
-        ctx.save();
-        ctx.translate(0, this.game.height * 0.3); // Center the band better
-        ctx.fillStyle = this.milkyWayPattern;
-        ctx.fillRect(0, 0, this.game.width, this.game.height*0.5);
-        ctx.restore();
-    }
-    
-    generateMilkyWayPattern() {
-        // Create a canvas to generate the Milky Way pattern
-        const patternCanvas = document.createElement('canvas');
-        const patternCtx = patternCanvas.getContext('2d');
-        
-        // Make it wide enough to tile seamlessly
-        patternCanvas.width = 1024;
-        patternCanvas.height = 512;
-        
-        // Layer 1: Light blue background glow (galactic plane)
-        this.drawGalacticPlane(patternCtx, patternCanvas.width, patternCanvas.height);
-        
-        // Layer 2: Orange/red stellar background
-        this.drawStellarBackground(patternCtx, patternCanvas.width, patternCanvas.height);
-        
-        // Layer 3: Dark foreground overlays (dust lanes, molecular clouds)
-        this.drawDarkOverlays(patternCtx, patternCanvas.width, patternCanvas.height);
-        
-        // Create a repeating pattern
-        this.milkyWayPattern = this.game.ctx.createPattern(patternCanvas, 'repeat-x');
-    }
-    
-    drawGalacticPlane(ctx, width, height) {
-        // Create the light blue background glow of the galactic plane - reduced to 30% of screen
-        const centerY = height * 0.5; // Center it properly
-        const planeHeight = height * 0.3; // Reduce from 0.6 to 0.3 (30% of screen)
-        
-        // Main plane gradient
-        const planeGradient = ctx.createLinearGradient(0, centerY - planeHeight/2, 0, centerY + planeHeight/2);
-        planeGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        planeGradient.addColorStop(0.1, 'rgba(40, 60, 100, 0.2)');   // Very light blue
-        planeGradient.addColorStop(0.3, 'rgba(60, 90, 140, 0.4)');   // Light blue
-        planeGradient.addColorStop(0.5, 'rgba(80, 120, 180, 0.6)');  // Medium blue
-        planeGradient.addColorStop(0.7, 'rgba(60, 90, 140, 0.4)');   // Light blue
-        planeGradient.addColorStop(0.9, 'rgba(40, 60, 100, 0.2)');   // Very light blue
-        planeGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
-        ctx.fillStyle = planeGradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Add subtle blue noise variations
-        this.addNoiseLayer(ctx, width, height, 'rgba(60, 90, 140, 0.1)', 0.3);
-    }
-    
-    drawStellarBackground(ctx, width, height) {
-        // Create the orange/red stellar population background - match the reduced size
-        const centerY = height * 0.25; // Center it properly
-        const stellarHeight = height * 0.4; // Slightly smaller than the blue band
-        
-        // Stellar population gradient
-        const stellarGradient = ctx.createLinearGradient(0, centerY - stellarHeight/2, 0, centerY + stellarHeight/2);
-        stellarGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-        stellarGradient.addColorStop(0.2, 'rgba(80, 40, 20, 0.3)');   // Dark red
-        stellarGradient.addColorStop(0.4, 'rgba(120, 60, 30, 0.5)');  // Medium red
-        stellarGradient.addColorStop(0.6, 'rgba(160, 80, 40, 0.6)');  // Bright orange
-        stellarGradient.addColorStop(0.8, 'rgba(120, 60, 30, 0.5)');  // Medium red
-        stellarGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
-        ctx.fillStyle = stellarGradient;
-        ctx.fillRect(0, 0, width, height);
-        
-        // Add orange/red noise variations
-        this.addNoiseLayer(ctx, width, height, 'rgba(160, 80, 40, 0.2)', 0.4);
-    }
-    
-    drawDarkOverlays(ctx, width, height) {
-        // Create dark foreground overlays (dust lanes, molecular clouds)
-        const centerY = height * 0.5; // Match the centered position
-        
-        // Generate multiple dark dust lanes using noise
-        for (let i = 0; i < 5; i++) {
-            this.drawDustLane(ctx, width, height, centerY, i);
-        }
-        
-        // Add molecular cloud patches
-        this.addMolecularClouds(ctx, width, height, centerY);
-    }
-    
-    drawDustLane(ctx, width, height, centerY, index) {
-        // Create a dark dust lane using noise - restricted to smaller Milky Way band
-        const bandHeight = height * 0.3; // Match the new smaller galactic plane
-        const bandTop = centerY - bandHeight / 2;
-        const bandBottom = centerY + bandHeight / 2;
-        
-        // Calculate lane Y position within the band - tighter spacing for smaller band
-        const laneY = centerY + (index - 2) * 15; // Even closer spacing for smaller band
-        const laneWidth = 100 + Math.random() * 150;
-        const opacity = 0.3 + Math.random() * 0.4;
-        
-        // Only draw if the lane is within the Milky Way band
-        if (laneY >= bandTop && laneY <= bandBottom) {
-            // Generate noise-based lane shape
-            for (let x = 0; x < width; x += 4) {
-                const noise = this.simpleNoise(x * 0.01 + index * 100) * 10; // Further reduced noise range
-                const laneHeight = 6 + Math.random() * 8; // Smaller lanes for smaller band
-                
-                ctx.fillStyle = `rgba(10, 8, 5, ${opacity})`;
-                ctx.fillRect(x, laneY + noise - laneHeight/2, 4, laneHeight);
-            }
-        }
-    }
-    
-    addMolecularClouds(ctx, width, height, centerY) {
-        // Add dark molecular cloud patches - restricted to smaller Milky Way band
-        const cloudCount = 6; // Fewer clouds for smaller band
-        const bandHeight = height * 0.3; // Match the new smaller galactic plane
-        const bandTop = centerY - bandHeight / 2;
-        const bandBottom = centerY + bandHeight / 2;
-        
-        for (let i = 0; i < cloudCount; i++) {
-            const x = Math.random() * width;
-            // Restrict Y position to within the smaller Milky Way band
-            const y = bandTop + Math.random() * bandHeight;
-            const size = 20 + Math.random() * 40; // Smaller clouds for smaller band
-            const opacity = 0.2 + Math.random() * 0.3;
-            
-            const gradient = ctx.createRadialGradient(x, y, 0, x, y, size);
-            gradient.addColorStop(0, `rgba(5, 3, 2, ${opacity})`);
-            gradient.addColorStop(0.7, `rgba(8, 5, 3, ${opacity * 0.5})`);
-            gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-            
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, width, height);
-        }
-    }
-    
-    addNoiseLayer(ctx, width, height, color, intensity) {
-        // Add subtle noise variations to create texture
-        for (let x = 0; x < width; x += 8) {
-            for (let y = 0; y < height; y += 8) {
-                const noise = this.simpleNoise(x * 0.02 + y * 0.02) * intensity;
-                if (Math.random() < 0.3) { // 30% chance of noise pixel
-                    ctx.fillStyle = color;
-                    ctx.fillRect(x, y, 8, 8);
-                }
-            }
-        }
-    }
-    
-    simpleNoise(x) {
-        // Simple pseudo-random noise function
-        return Math.sin(x * 12.9898) * Math.cos(x * 78.233) * 43758.5453 % 1;
-    }
+
     
 
 }
@@ -1502,9 +1293,7 @@ class HighScoreState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw Milky Way background
-        if (this.game.states.menu && this.game.states.menu.drawMilkyWay) {
-            this.game.states.menu.drawMilkyWay(ctx);
-        }
+        this.game.drawMilkyWay(ctx);
         
         // Draw stars background
         this.game.stars.forEach(star => star.render(ctx));
