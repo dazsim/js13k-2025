@@ -901,6 +901,65 @@ class GameplayState extends GameState {
         this.renderTurboBar(ctx);
     }
     
+    renderBar(ctx, options) {
+        const {
+            x, y, width, height, label, value, maxValue = 1,
+            backgroundColor = '#333', foregroundColor = '#00ff00',
+            borderColor = '#fff', textColor = '#fff',
+            showSegments = false, segmentCount = 1,
+            showBorder = true, showLabel = true
+        } = options;
+        
+        // Draw background bar
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(x, y, width, height);
+        
+        // Draw foreground (progress/value)
+        if (value > 0) {
+            ctx.fillStyle = foregroundColor;
+            if (showSegments) {
+                // Draw segmented bar (like shield)
+                const segmentWidth = width / segmentCount;
+                const filledSegments = Math.floor((value / maxValue) * segmentCount);
+                for (let i = 0; i < filledSegments; i++) {
+                    ctx.fillRect(x + (i * segmentWidth), y, segmentWidth, height);
+                }
+                
+                // Draw segment dividers
+                if (segmentCount > 1) {
+                    ctx.strokeStyle = '#666';
+                    ctx.lineWidth = 1;
+                    for (let i = 1; i < segmentCount; i++) {
+                        const dividerX = x + (i * segmentWidth);
+                        ctx.beginPath();
+                        ctx.moveTo(dividerX, y);
+                        ctx.lineTo(dividerX, y + height);
+                        ctx.stroke();
+                    }
+                }
+            } else {
+                // Draw continuous bar (like cloak and turbo)
+                const fillWidth = (value / maxValue) * width;
+                ctx.fillRect(x, y, fillWidth, height);
+            }
+        }
+        
+        // Draw border
+        if (showBorder) {
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
+        }
+        
+        // Draw label
+        if (showLabel) {
+            ctx.fillStyle = textColor;
+            ctx.font = '14px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, x + width / 2, y + 15);
+        }
+    }
+    
     renderCloakingBar(ctx) {
         // Don't render cloaking bar on shop level (level 5)
         if (this.game.gameData.level === 5) {
@@ -912,26 +971,14 @@ class GameplayState extends GameState {
         const barX = (this.game.width - barWidth) / 2;
         const barY = 20;
         
-        // Draw background bar
-        ctx.fillStyle = '#333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Draw cloaking progress
-        if (this.game.player && this.game.player.isCloaked) {
-            ctx.fillStyle = '#00ffff';
-            ctx.fillRect(barX, barY, barWidth * this.game.player.cloakLevel, barHeight);
-        }
-        
-        // Draw border
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
-        
-        // Draw label
-        ctx.fillStyle = '#fff';
-        ctx.font = '14px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('CLOAK', this.game.width / 2, barY + 15);
+        this.renderBar(ctx, {
+            x: barX, y: barY, width: barWidth, height: barHeight,
+            label: 'CLOAK',
+            value: this.game.player && this.game.player.isCloaked ? this.game.player.cloakLevel : 0,
+            maxValue: 1,
+            foregroundColor: '#00ffff',
+            showSegments: false
+        });
     }
     
     renderShieldBar(ctx) {
@@ -940,42 +987,15 @@ class GameplayState extends GameState {
         const barX = (this.game.width - barWidth) / 2;
         const barY = 50; // Below the cloaking bar
         
-        // Draw background bar
-        ctx.fillStyle = '#333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Get shield info dynamically
-        const maxShield = this.game.player.maxShieldLevel;
-        const currentShield = this.game.player.shieldLevel;
-        const segmentWidth = barWidth / maxShield;
-        
-        // Draw shield segments (dynamic number of segments)
-        for (let i = 0; i < currentShield; i++) {
-            ctx.fillStyle = '#00ff00'; // Green for shield
-            ctx.fillRect(barX + (i * segmentWidth), barY, segmentWidth, barHeight);
-        }
-        
-        // Draw segment dividers (dynamic number of dividers)
-        ctx.strokeStyle = '#666';
-        ctx.lineWidth = 1;
-        for (let i = 1; i < maxShield; i++) {
-            const x = barX + (i * segmentWidth);
-            ctx.beginPath();
-            ctx.moveTo(x, barY);
-            ctx.lineTo(x, barY + barHeight);
-            ctx.stroke();
-        }
-        
-        // Draw border
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
-        
-        // Draw label
-        ctx.fillStyle = '#fff';
-        ctx.font = '14px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('SHIELD', this.game.width / 2, barY + 15);
+        this.renderBar(ctx, {
+            x: barX, y: barY, width: barWidth, height: barHeight,
+            label: 'SHIELD',
+            value: this.game.player.shieldLevel,
+            maxValue: this.game.player.maxShieldLevel,
+            foregroundColor: '#00ff00',
+            showSegments: true,
+            segmentCount: this.game.player.maxShieldLevel
+        });
     }
     
     renderTurboBar(ctx) {
@@ -989,27 +1009,14 @@ class GameplayState extends GameState {
         const barX = (this.game.width - barWidth) / 2;
         const barY = 80; // Below the shield bar
         
-        // Draw background bar
-        ctx.fillStyle = '#333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        
-        // Draw turbo charge
-        if (this.game.player.turboCharge > 0) {
-            const chargePercent = this.game.player.turboCharge / this.game.player.maxTurboCharge;
-            ctx.fillStyle = this.game.player.turboActive ? '#ff6600' : '#00ff00'; // Orange when active, green when charged
-            ctx.fillRect(barX, barY, barWidth * chargePercent, barHeight);
-        }
-        
-        // Draw border
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
-        
-        // Draw label
-        ctx.fillStyle = '#fff';
-        ctx.font = '14px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('TURBO', this.game.width / 2, barY + 15);
+        this.renderBar(ctx, {
+            x: barX, y: barY, width: barWidth, height: barHeight,
+            label: 'TURBO',
+            value: this.game.player.turboCharge,
+            maxValue: this.game.player.maxTurboCharge,
+            foregroundColor: this.game.player.turboActive ? '#ff6600' : '#00ff00', // Orange when active, green when charged
+            showSegments: false
+        });
     }
     
     handleInput(keys) {
@@ -1019,6 +1026,14 @@ class GameplayState extends GameState {
         if (keys['Digit0'] || keys['Key0']) {
             this.game.gameData.metal += 100;
             console.log(`Added 100 metal! Total: ${this.game.gameData.metal}`);
+        }
+        
+        if (keys['Digit9'] || keys['Key9']) {
+            if (this.game.player) {
+                this.game.player.turboLevel = 1;
+                this.game.player.turboCharge = 5;
+                console.log('Turbo Thrust granted via dev controls!');
+            }
         }
         
         // Level jump keys for testing
@@ -1722,6 +1737,11 @@ class Player {
         if (this.isCloaked) {
             ctx.globalAlpha = 1 - this.cloakLevel;
         }
+
+        // Draw turbo flames when active
+        if (this.turboActive && this.turboLevel > 0) {
+            this.drawTurboFlames(ctx);
+        }
         
         // Draw black cat spaceship
         ctx.fillStyle = '#000';
@@ -1755,42 +1775,89 @@ class Player {
         ctx.lineTo(this.x + this.width - 5, this.y + 25);
         ctx.stroke();
         
-        // Draw rippling cloaking effect when cloaked
-        if (this.isCloaked) {
-            ctx.globalAlpha = this.cloakLevel; // Effect becomes more visible as ship fades
-            
-            // Create rippling circle effect
-            const centerX = this.x + this.width / 2;
-            const centerY = this.y + this.height / 2;
-            const baseRadius = Math.max(this.width, this.height) * 0.8;
-            
-            // Animate the ripple effect
-            const time = Date.now() * 0.005; // Animation speed
-            const rippleCount = 3; // Number of ripple rings
-            
-            for (let i = 0; i < rippleCount; i++) {
-                const rippleRadius = baseRadius + (i * 15) + Math.sin(time + i * 2) * 8;
-                const rippleAlpha = (this.cloakLevel * 0.6) / (i + 1); // Fade outer rings
-                
-                ctx.globalAlpha = rippleAlpha;
-                ctx.strokeStyle = '#00ffff'; // Cyan color for cloaking effect
-                ctx.lineWidth = 2;
-                ctx.setLineDash([5, 5]); // Dashed line effect
-                ctx.lineDashOffset = time * 2; // Animate dash movement
-                
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, rippleRadius, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-            
-            // Reset line dash
-            ctx.setLineDash([]);
-        }
-        
-        // Reset global alpha
-        ctx.globalAlpha = 1;
-    }
-}
+                 // Draw rippling cloaking effect when cloaked
+         if (this.isCloaked) {
+             ctx.globalAlpha = this.cloakLevel; // Effect becomes more visible as ship fades
+             
+             // Create rippling circle effect
+             const centerX = this.x + this.width / 2;
+             const centerY = this.y + this.height / 2;
+             const baseRadius = Math.max(this.width, this.height) * 0.8;
+             
+             // Animate the ripple effect
+             const time = Date.now() * 0.005; // Animation speed
+             const rippleCount = 3; // Number of ripple rings
+             
+             for (let i = 0; i < rippleCount; i++) {
+                 const rippleRadius = baseRadius + (i * 15) + Math.sin(time + i * 2) * 8;
+                 const rippleAlpha = (this.cloakLevel * 0.6) / (i + 1); // Fade outer rings
+                 
+                 ctx.globalAlpha = rippleAlpha;
+                 ctx.strokeStyle = '#00ffff'; // Cyan color for cloaking effect
+                 ctx.lineWidth = 2;
+                 ctx.setLineDash([5, 5]); // Dashed line effect
+                 ctx.lineDashOffset = time * 2; // Animate dash movement
+                 
+                 ctx.beginPath();
+                 ctx.arc(centerX, centerY, rippleRadius, 0, Math.PI * 2);
+                 ctx.stroke();
+             }
+             
+             // Reset line dash
+             ctx.setLineDash([]);
+         }
+         
+         
+         
+                  // Reset global alpha
+         ctx.globalAlpha = 1;
+     }
+     
+                       drawTurboFlames(ctx) {
+           // Draw animated flames behind the ship when turbo is active
+           const time = Date.now() * 0.01; // Animation speed
+           const flameBaseX = this.x - 15; // Closer to ship to avoid clipping
+           const flameCenterY = this.y + this.height / 2;
+           
+           // Create flame layers
+           const flameLayers = [
+               { color: '#ff4400', size: 25, speed: 3, offset: 0 },      // Orange core
+               { color: '#ff6600', size: 20, speed: 2, offset: -4 },      // Bright orange
+               { color: '#ff8800', size: 15, speed: 1.5, offset: -8 },    // Medium orange
+               { color: '#ffaa00', size: 10, speed: 1, offset: -12 }      // Light orange
+           ];
+           
+           // Draw flame shapes using ellipses (simpler than complex paths)
+           for (let i = 0; i < flameLayers.length; i++) {
+               const layer = flameLayers[i];
+               
+               // Animate flame flicker and movement
+               const flicker = Math.sin(time * layer.speed + i) * 0.3 + 0.7;
+               const flameX = flameBaseX - layer.offset;
+               const flameY = flameCenterY + Math.sin(time * 2 + i) * 3;
+               
+               // Draw flame as an elongated ellipse pointing away from ship
+               ctx.save();
+               ctx.translate(flameX, flameY);
+               ctx.scale(flicker, 1); // Horizontal flicker effect
+               
+               ctx.fillStyle = layer.color;
+               ctx.globalAlpha = 0.8 + flicker * 0.2; // Opacity flicker
+               
+               ctx.beginPath();
+               ctx.ellipse(0, 0, layer.size, layer.size * 0.4, 0, 0, Math.PI * 2);
+               ctx.fill();
+               
+               // Add glow effect
+               ctx.shadowColor = layer.color;
+               ctx.shadowBlur = 6;
+               ctx.fill();
+               ctx.shadowBlur = 0;
+               
+               ctx.restore();
+           }
+       }
+ }
 
 class Enemy {
     constructor(x, y, level, enemyType = 0) {
