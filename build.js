@@ -4,6 +4,7 @@ const esbuild = require('esbuild');
 const archiver = require('archiver');
 const chokidar = require('chokidar');
 const { minify } = require('html-minifier-terser');
+let zopfli; // Lazy load zopfli only when needed
 
 const args = process.argv.slice(2);
 const watchMode = args.includes('--watch');
@@ -51,6 +52,36 @@ function log(message, level = 'info') {
 
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function getAllFiles(dir) {
+    const files = [];
+    
+    async function scanDirectory(currentDir, relativePath = '') {
+        const items = await fs.readdir(currentDir);
+        
+        for (const item of items) {
+            if (item.startsWith('.') || item === 'Thumbs.db') {
+                continue;
+            }
+            
+            const fullPath = path.join(currentDir, item);
+            const stat = await fs.stat(fullPath);
+            
+            if (stat.isDirectory()) {
+                await scanDirectory(fullPath, path.join(relativePath, item));
+            } else {
+                files.push({
+                    fullPath,
+                    relativePath: path.join(relativePath, item),
+                    size: stat.size
+                });
+            }
+        }
+    }
+    
+    await scanDirectory(dir);
+    return files;
 }
 
 async function processJsFile(filePath) {
@@ -345,71 +376,89 @@ function createSimpleZip(files) {
 
 async function createZipWithZopfli(zipPath, targetDir, startTime, zipName) {
     try {
-        log('🔧 Using maximum compression mode (this will take longer)...', 'info');
+        // Lazy load zopfli only when needed
+        if (!zopfli) {
+            zopfli = require('node-zopfli');
+        }
         
-        // Use archiver with optimized maximum compression settings
-        return new Promise((resolve, reject) => {
-            const output = fs.createWriteStream(zipPath);
-            const archive = archiver('zip', { 
-                zlib: { 
-                    level: 9, // Maximum compression level
-                    memLevel: 8, // High memory usage (8 is often better than 9)
-                    strategy: 0, // Z_DEFAULT_STRATEGY (0) is usually better than 3
-                    windowBits: 15, // Standard deflate window
-                    chunkSize: 16384 // Optimal chunk size for compression
-                } 
-            });
-            
-            output.on('close', () => {
-                const size = archive.pointer();
-                const buildTime = ((Date.now() - startTime) / 1000).toFixed(2);
+        log('🔧 Using Zopfli for maximum compression (this will take longer)...', 'info');
+        
+        // Get all files from target directory
+        const files = await getAllFiles(targetDir);
+        const fileData = [];
+        
+        // Process each file with Zopfli deflate compression
+        for (const file of files) {
+            try {
+                // Read file as buffer for better compatibility
+                const content = await fs.readFile(file.fullPath);
                 
-                let sizeMsg = `${size} bytes`;
-                if (releaseMode) {
-                    const percent = ((size / CONFIG.LIMIT) * 100).toFixed(2);
-                    if (size > CONFIG.LIMIT) {
-                        sizeMsg = color(`OVER LIMIT by ${size - CONFIG.LIMIT} bytes!`, 'red');
-                    } else if (percent >= 95) {
-                        sizeMsg = color(`${size} bytes (${percent}%)`, 'red');
-                    } else if (percent >= 80) {
-                        sizeMsg = color(`${size} bytes (${percent}%)`, 'yellow');
-                    } else {
-                        sizeMsg = color(`${size} bytes (${percent}%)`, 'green');
-                    }
-                }
+                // Use Zopfli deflate with proper options
+                const compressed = await zopfli.deflate(content, {
+                    verbose: false,
+                    verbose_more: false,
+                    numiterations: 15, // Good for small files
+                    blocksplitting: true,
+                    blocksplittinglast: false,
+                    blocksplittingmax: 15
+                });
                 
-                if (watchMode && releaseMode) {
-                    process.stdout.write('\x1Bc'); // clear screen
-                    console.log(color('=== js13k Live Build Dashboard ===', 'bold'));
-                    console.log(`Project: ${projectName}`);
-                    console.log(`ZIP: ${zipName} (Max Compression)`);
-                    console.log(`Size: ${sizeMsg}`);
-                    console.log(`Time: ${buildTime}s`);
-                    console.log(`Updated: ${new Date().toLocaleTimeString()}`);
-                } else {
-                    console.log(`📦 ${zipName} → ${sizeMsg} (Built in ${buildTime}s) [Max Compression]`);
-                }
+                fileData.push({
+                    name: file.relativePath,
+                    data: compressed,
+                    size: compressed.length
+                });
                 
-                log(`✅ Build completed successfully in ${buildTime}s with maximum compression`, 'info');
-                resolve();
-            });
-            
-            archive.on('error', (error) => {
-                log(`❌ Archive creation failed: ${error.message}`, 'error');
-                reject(error);
-            });
-            
-            archive.on('warning', (warning) => {
-                log(`⚠️  Archive warning: ${warning.message}`, 'warn');
-            });
-            
-            archive.pipe(output);
-            archive.directory(targetDir, false);
-            archive.finalize();
-        });
+                log(`✅ Compressed ${file.relativePath} with Zopfli (${content.length} → ${compressed.length} bytes)`, 'info');
+            } catch (error) {
+                log(`⚠️  Failed to compress ${file.relativePath}: ${error.message}`, 'warn');
+                // Fall back to uncompressed
+                const content = await fs.readFile(file.fullPath);
+                fileData.push({
+                    name: file.relativePath,
+                    data: content,
+                    size: content.length
+                });
+            }
+        }
+        
+        // Create ZIP file manually using Zopfli compressed data
+        const zipBuffer = createSimpleZip(fileData);
+        await fs.writeFile(zipPath, zipBuffer);
+        
+        const size = zipBuffer.length;
+        const buildTime = ((Date.now() - startTime) / 1000).toFixed(2);
+        
+        let sizeMsg = `${size} bytes`;
+        if (releaseMode) {
+            const percent = ((size / CONFIG.LIMIT) * 100).toFixed(2);
+            if (size > CONFIG.LIMIT) {
+                sizeMsg = color(`OVER LIMIT by ${size - CONFIG.LIMIT} bytes!`, 'red');
+            } else if (percent >= 95) {
+                sizeMsg = color(`${size} bytes (${percent}%)`, 'red');
+            } else if (percent >= 80) {
+                sizeMsg = color(`${size} bytes (${percent}%)`, 'yellow');
+            } else {
+                sizeMsg = color(`${size} bytes (${percent}%)`, 'green');
+            }
+        }
+        
+        if (watchMode && releaseMode) {
+            process.stdout.write('\x1Bc'); // clear screen
+            console.log(color('=== js13k Live Build Dashboard ===', 'bold'));
+            console.log(`Project: ${projectName}`);
+            console.log(`ZIP: ${zipName} (Zopfli Compression)`);
+            console.log(`Size: ${sizeMsg}`);
+            console.log(`Time: ${buildTime}s`);
+            console.log(`Updated: ${new Date().toLocaleTimeString()}`);
+        } else {
+            console.log(`📦 ${zipName} → ${sizeMsg} (Built in ${buildTime}s) [Zopfli Compression]`);
+        }
+        
+        log(`✅ Build completed successfully in ${buildTime}s with Zopfli compression`, 'info');
         
     } catch (error) {
-        log(`❌ Maximum compression failed: ${error.message}`, 'error');
+        log(`❌ Zopfli compression failed: ${error.message}`, 'error');
         log('🔄 Falling back to standard archiver...', 'warn');
         return createZipWithArchiver(zipPath, targetDir, startTime, zipName);
     }
