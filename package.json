@@ -6,6 +6,8 @@
   "scripts": {
     "build": "node build.js",
     "build:release": "node build.js --release",
+    "build:alt1": "node build.js --zopfli",
+    "build:alt1:release": "node build.js --zopfli --release",
     "build:watch": "node build.js --watch",
     "build:live": "node build.js --watch --release",
     "build:project": "node build.js --project=mygame",
@@ -44,10 +46,6 @@
     "fs-extra": "^11.1.1",
     "html-minifier-terser": "^7.2.0"
   },
-  "devDependencies": {},
-  "peerDependencies": {},
-  "optionalDependencies": {},
-  "bundleDependencies": [],
   "files": [
     "src/**/*",
     "build.js",
@@ -62,4 +60,4 @@
   "publishConfig": {
     "access": "public"
   }
-} 
+}

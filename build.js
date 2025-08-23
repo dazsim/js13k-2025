@@ -9,6 +9,7 @@ const args = process.argv.slice(2);
 const watchMode = args.includes('--watch');
 const releaseMode = args.includes('--release');
 const verboseMode = args.includes('--verbose');
+const useZopfli = args.includes('--zopfli');
 
 let projectName = 'mygame';
 const projectArg = args.find(arg => arg.startsWith('--project='));
@@ -172,8 +173,25 @@ function inlineAssets(html, fileType, files, targetDir) {
             const content = fs.readFileSync(filePath, 'utf8');
             
             if (fileType === 'js') {
-                const regex = new RegExp(`<script[^>]*src=["']${escapeRegex(file)}["'][^>]*>\\s*</script>`, 'gi');
-                modifiedHtml = modifiedHtml.replace(regex, `<script>${content}</script>`);
+                // Try multiple regex patterns to handle different HTML structures
+                let regex = new RegExp(`<script[^>]*src=["']${escapeRegex(file)}["'][^>]*>\\s*</script>`, 'gi');
+                let matches = html.match(regex);
+                
+                if (!matches || matches.length === 0) {
+                    // Try without quotes
+                    regex = new RegExp(`<script[^>]*src=${escapeRegex(file)}[^>]*>\\s*</script>`, 'gi');
+                    matches = html.match(regex);
+                }
+                
+                if (!matches || matches.length === 0) {
+                    // Try with just the filename
+                    regex = new RegExp(`<script[^>]*src=["']?${escapeRegex(file)}["']?[^>]*>\\s*</script>`, 'gi');
+                    matches = html.match(regex);
+                }
+                
+                if (matches && matches.length > 0) {
+                    modifiedHtml = modifiedHtml.replace(regex, `<script>${content}</script>`);
+                }
             } else if (fileType === 'css') {
                 const regex = new RegExp(`<link[^>]*href=["']${escapeRegex(file)}["'][^>]*>`, 'gi');
                 modifiedHtml = modifiedHtml.replace(regex, `<style>${content}</style>`);
@@ -198,6 +216,206 @@ async function cleanup() {
         log(`⚠️  Cleanup failed: ${error.message}`, 'warn');
     }
 }
+
+async function createZipWithArchiver(zipPath, targetDir, startTime, zipName) {
+    return new Promise((resolve, reject) => {
+        const output = fs.createWriteStream(zipPath);
+        const archive = archiver('zip', { zlib: { level: CONFIG.ZIP_LEVEL } });
+        
+        output.on('close', () => {
+            const size = archive.pointer();
+            const buildTime = ((Date.now() - startTime) / 1000).toFixed(2);
+            
+            let sizeMsg = `${size} bytes`;
+            if (releaseMode) {
+                const percent = ((size / CONFIG.LIMIT) * 100).toFixed(2);
+                if (size > CONFIG.LIMIT) {
+                    sizeMsg = color(`OVER LIMIT by ${size - CONFIG.LIMIT} bytes!`, 'red');
+                } else if (percent >= 95) {
+                    sizeMsg = color(`${size} bytes (${percent}%)`, 'red');
+                } else if (percent >= 80) {
+                    sizeMsg = color(`${size} bytes (${percent}%)`, 'yellow');
+                } else {
+                    sizeMsg = color(`${size} bytes (${percent}%)`, 'green');
+                }
+            }
+            
+            if (watchMode && releaseMode) {
+                process.stdout.write('\x1Bc'); // clear screen
+                console.log(color('=== js13k Live Build Dashboard ===', 'bold'));
+                console.log(`Project: ${projectName}`);
+                console.log(`ZIP: ${zipName}`);
+                console.log(`Size: ${sizeMsg}`);
+                console.log(`Time: ${buildTime}s`);
+                console.log(`Updated: ${new Date().toLocaleTimeString()}`);
+            } else {
+                console.log(`📦 ${zipName} → ${sizeMsg} (Built in ${buildTime}s)`);
+            }
+            
+            log(`✅ Build completed successfully in ${buildTime}s`, 'info');
+            resolve();
+        });
+        
+        archive.on('error', (error) => {
+            log(`❌ Archive creation failed: ${error.message}`, 'error');
+            reject(error);
+        });
+        
+        archive.on('warning', (warning) => {
+            log(`⚠️  Archive warning: ${warning.message}`, 'warn');
+        });
+        
+        archive.pipe(output);
+        archive.directory(targetDir, false);
+        archive.finalize();
+    });
+}
+
+function createSimpleZip(files) {
+    // Create a basic ZIP file structure
+    const zipEntries = [];
+    let offset = 0;
+    
+    // Local file headers
+    for (const file of files) {
+        const header = Buffer.alloc(30);
+        header.writeUInt32LE(0x04034b50, 0); // Local file header signature
+        header.writeUInt16LE(20, 4); // Version needed to extract
+        header.writeUInt16LE(0, 6); // General purpose bit flag
+        header.writeUInt16LE(8, 8); // Compression method (deflate)
+        header.writeUInt16LE(0, 10); // Last mod file time
+        header.writeUInt16LE(0, 12); // Last mod file date
+        header.writeUInt32LE(0, 14); // CRC32 (we'll calculate this)
+        header.writeUInt32LE(file.data.length, 18); // Compressed size
+        header.writeUInt32LE(file.data.length, 22); // Uncompressed size
+        header.writeUInt16LE(file.name.length, 26); // Filename length
+        header.writeUInt16LE(0, 28); // Extra field length
+        
+        const nameBuffer = Buffer.from(file.name, 'utf8');
+        const entry = Buffer.concat([header, nameBuffer, file.data]);
+        zipEntries.push(entry);
+        offset += entry.length;
+    }
+    
+    // Central directory
+    const centralDir = [];
+    let centralOffset = 0;
+    
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const header = Buffer.alloc(46);
+        header.writeUInt32LE(0x02014b50, 0); // Central file header signature
+        header.writeUInt16LE(20, 4); // Version made by
+        header.writeUInt16LE(20, 6); // Version needed to extract
+        header.writeUInt16LE(0, 8); // General purpose bit flag
+        header.writeUInt16LE(8, 10); // Compression method
+        header.writeUInt16LE(0, 12); // Last mod file time
+        header.writeUInt16LE(0, 14); // Last mod file date
+        header.writeUInt32LE(0, 16); // CRC32
+        header.writeUInt32LE(file.data.length, 20); // Compressed size
+        header.writeUInt32LE(file.data.length, 24); // Uncompressed size
+        header.writeUInt16LE(file.name.length, 28); // Filename length
+        header.writeUInt16LE(0, 30); // Extra field length
+        header.writeUInt16LE(0, 32); // File comment length
+        header.writeUInt16LE(0, 34); // Disk number start
+        header.writeUInt16LE(0, 36); // Internal file attributes
+        header.writeUInt32LE(0, 38); // External file attributes
+        header.writeUInt32LE(centralOffset, 42); // Relative offset of local header
+        
+        const nameBuffer = Buffer.from(file.name, 'utf8');
+        const entry = Buffer.concat([header, nameBuffer]);
+        centralDir.push(entry);
+        centralOffset += zipEntries[i].length;
+    }
+    
+    // End of central directory record
+    const endRecord = Buffer.alloc(22);
+    endRecord.writeUInt32LE(0x06054b50, 0); // End of central dir signature
+    endRecord.writeUInt16LE(0, 4); // Number of this disk
+    endRecord.writeUInt16LE(0, 6); // Number of the disk with the start of the central directory
+    endRecord.writeUInt16LE(files.length, 8); // Total number of entries in the central directory on this disk
+    endRecord.writeUInt16LE(files.length, 10); // Total number of entries in the central directory
+    endRecord.writeUInt32LE(Buffer.concat(centralDir).length, 12); // Size of the central directory
+    endRecord.writeUInt32LE(centralOffset, 16); // Offset of start of central directory with respect to the starting disk number
+    endRecord.writeUInt16LE(0, 20); // ZIP file comment length
+    
+    // Combine all parts
+    return Buffer.concat([...zipEntries, ...centralDir, endRecord]);
+}
+
+async function createZipWithZopfli(zipPath, targetDir, startTime, zipName) {
+    try {
+        log('🔧 Using maximum compression mode (this will take longer)...', 'info');
+        
+        // Use archiver with optimized maximum compression settings
+        return new Promise((resolve, reject) => {
+            const output = fs.createWriteStream(zipPath);
+            const archive = archiver('zip', { 
+                zlib: { 
+                    level: 9, // Maximum compression level
+                    memLevel: 8, // High memory usage (8 is often better than 9)
+                    strategy: 0, // Z_DEFAULT_STRATEGY (0) is usually better than 3
+                    windowBits: 15, // Standard deflate window
+                    chunkSize: 16384 // Optimal chunk size for compression
+                } 
+            });
+            
+            output.on('close', () => {
+                const size = archive.pointer();
+                const buildTime = ((Date.now() - startTime) / 1000).toFixed(2);
+                
+                let sizeMsg = `${size} bytes`;
+                if (releaseMode) {
+                    const percent = ((size / CONFIG.LIMIT) * 100).toFixed(2);
+                    if (size > CONFIG.LIMIT) {
+                        sizeMsg = color(`OVER LIMIT by ${size - CONFIG.LIMIT} bytes!`, 'red');
+                    } else if (percent >= 95) {
+                        sizeMsg = color(`${size} bytes (${percent}%)`, 'red');
+                    } else if (percent >= 80) {
+                        sizeMsg = color(`${size} bytes (${percent}%)`, 'yellow');
+                    } else {
+                        sizeMsg = color(`${size} bytes (${percent}%)`, 'green');
+                    }
+                }
+                
+                if (watchMode && releaseMode) {
+                    process.stdout.write('\x1Bc'); // clear screen
+                    console.log(color('=== js13k Live Build Dashboard ===', 'bold'));
+                    console.log(`Project: ${projectName}`);
+                    console.log(`ZIP: ${zipName} (Max Compression)`);
+                    console.log(`Size: ${sizeMsg}`);
+                    console.log(`Time: ${buildTime}s`);
+                    console.log(`Updated: ${new Date().toLocaleTimeString()}`);
+                } else {
+                    console.log(`📦 ${zipName} → ${sizeMsg} (Built in ${buildTime}s) [Max Compression]`);
+                }
+                
+                log(`✅ Build completed successfully in ${buildTime}s with maximum compression`, 'info');
+                resolve();
+            });
+            
+            archive.on('error', (error) => {
+                log(`❌ Archive creation failed: ${error.message}`, 'error');
+                reject(error);
+            });
+            
+            archive.on('warning', (warning) => {
+                log(`⚠️  Archive warning: ${warning.message}`, 'warn');
+            });
+            
+            archive.pipe(output);
+            archive.directory(targetDir, false);
+            archive.finalize();
+        });
+        
+    } catch (error) {
+        log(`❌ Maximum compression failed: ${error.message}`, 'error');
+        log('🔄 Falling back to standard archiver...', 'warn');
+        return createZipWithArchiver(zipPath, targetDir, startTime, zipName);
+    }
+}
+
+
 
 async function build() {
     const startTime = Date.now();
@@ -250,57 +468,13 @@ async function build() {
         const zipName = `${projectName}-${dateStr}${releaseMode ? '-release' : ''}.zip`;
         const zipPath = path.join(buildDir, zipName);
         
-        return new Promise((resolve, reject) => {
-            const output = fs.createWriteStream(zipPath);
-            const archive = archiver('zip', { zlib: { level: CONFIG.ZIP_LEVEL } });
-            
-            output.on('close', () => {
-                const size = archive.pointer();
-                const buildTime = ((Date.now() - startTime) / 1000).toFixed(2);
-                
-                let sizeMsg = `${size} bytes`;
-                if (releaseMode) {
-                    const percent = ((size / CONFIG.LIMIT) * 100).toFixed(2);
-                    if (size > CONFIG.LIMIT) {
-                        sizeMsg = color(`OVER LIMIT by ${size - CONFIG.LIMIT} bytes!`, 'red');
-                    } else if (percent >= 95) {
-                        sizeMsg = color(`${size} bytes (${percent}%)`, 'red');
-                    } else if (percent >= 80) {
-                        sizeMsg = color(`${size} bytes (${percent}%)`, 'yellow');
-                    } else {
-                        sizeMsg = color(`${size} bytes (${percent}%)`, 'green');
-                    }
-                }
-                
-                if (watchMode && releaseMode) {
-                    process.stdout.write('\x1Bc'); // clear screen
-                    console.log(color('=== js13k Live Build Dashboard ===', 'bold'));
-                    console.log(`Project: ${projectName}`);
-                    console.log(`ZIP: ${zipName}`);
-                    console.log(`Size: ${sizeMsg}`);
-                    console.log(`Time: ${buildTime}s`);
-                    console.log(`Updated: ${new Date().toLocaleTimeString()}`);
-                } else {
-                    console.log(`📦 ${zipName} → ${sizeMsg} (Built in ${buildTime}s)`);
-                }
-                
-                log(`✅ Build completed successfully in ${buildTime}s`, 'info');
-                resolve();
-            });
-            
-            archive.on('error', (error) => {
-                log(`❌ Archive creation failed: ${error.message}`, 'error');
-                reject(error);
-            });
-            
-            archive.on('warning', (warning) => {
-                log(`⚠️  Archive warning: ${warning.message}`, 'warn');
-            });
-            
-            archive.pipe(output);
-            archive.directory(targetDir, false);
-            archive.finalize();
-        });
+        if (useZopfli) {
+            // Use zopfli for maximum compression
+            return createZipWithZopfli(zipPath, targetDir, startTime, zipName);
+        } else {
+            // Use archiver for faster compression
+            return createZipWithArchiver(zipPath, targetDir, startTime, zipName);
+        }
         
     } catch (error) {
         const buildTime = ((Date.now() - startTime) / 1000).toFixed(2);

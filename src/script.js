@@ -62,6 +62,7 @@ class Game {
         this.stars = [];
         this.particles = [];
         this.metal = [];
+        this.proximityBombs = [];
         
         this.keys = {};
         this.lastTime = 0;
@@ -98,6 +99,7 @@ class Game {
             gameplay: new GameplayState(this),
             pause: new PauseState(this),
             gameOver: new GameOverState(this),
+            win: new WinState(this),
             settings: new SettingsState(this),
             highscore: new HighScoreState(this),
             shop: new ShopState(this)
@@ -132,6 +134,8 @@ class Game {
             this.changeState('gameplay'); // Pause goes back to gameplay
         } else if (this.currentState === this.states.gameOver) {
             this.changeState('menu'); // Game over always goes back to main menu
+        } else if (this.currentState === this.states.win) {
+            this.changeState('menu'); // Win state goes back to main menu
         }
         // If we're in gameplay or menu, goBack does nothing
     }
@@ -447,6 +451,13 @@ class GameplayState extends GameState {
         this.levelComplete = false;
         this.levelObjectives = {};
         this.currentLevelData = null;
+        
+        // Dev control cooldowns
+        this.devCooldowns = {
+            metal: 0,
+            turbo: 0,
+            levelNav: 0
+        };
     }
     
     enter() {
@@ -503,7 +514,10 @@ class GameplayState extends GameState {
         this.spawnCounts = {
             asteroids: 0,
             mice: 0,
-            shops: 0
+            shops: 0,
+            snakes: 0,
+            birds: 0,
+            ratboss: 0
         };
         
         // Reset enemy pool for new level
@@ -514,7 +528,7 @@ class GameplayState extends GameState {
     
     getLevelData(level) {
                  const levels = {
-                         1: {
+            1: {
                  description: "Survive 50 asteroids",
                  objectives: { asteroids: 50 },
                  spawnRules: { asteroids: true, mice: false, shops: false },
@@ -527,23 +541,53 @@ class GameplayState extends GameState {
                  maxEnemies: 10
              },
             3: {
+                description: "Collect the floating shop",
+                objectives: { shops: 1 },
+                spawnRules: { asteroids: false, mice: false, shops: true },
+                maxEnemies: 1
+            },
+            4: {
                  description: "Survive 60 asteroids and 20 mice",
                  objectives: { asteroids: 60, mice: 20 },
                  spawnRules: { asteroids: true, mice: true, shops: false },
                  maxEnemies: 12
              },
-            4: {
-                 description: "Survive 70 asteroids and 25 mice",
-                 objectives: { asteroids: 70, mice: 25 },
+            5: {
+                 description: "Survive 70 asteroids, 25 mice, and 10 snakes",
+                 objectives: { asteroids: 70, mice: 25, snakes: 10 },
                  spawnRules: { asteroids: true, mice: true, shops: false },
                  maxEnemies: 15
              },
-            5: {
+            6: {
                  description: "Collect the floating shop",
                  objectives: { shops: 1 },
                  spawnRules: { asteroids: false, mice: false, shops: true },
                  maxEnemies: 1
-             }
+             },
+            7: {
+                 description: "Survive 80 asteroids, 30 mice, and 10 snakes",
+                 objectives: { asteroids: 80, mice: 30, snakes: 10 },
+                 spawnRules: { asteroids: true, mice: true, snakes: true, shops: false },
+                 maxEnemies: 18
+             },
+            8: {
+                 description: "Survive 90 asteroids, 35 mice, 15 snakes, and 5 birds",
+                 objectives: { asteroids: 90, mice: 35, snakes: 15, birds: 5 },
+                 spawnRules: { asteroids: true, mice: true, snakes: true, birds: true, shops: false },
+                 maxEnemies: 20
+             },
+             9: {
+                description: "Collect the floating shop",
+                objectives: { shops: 1 },
+                spawnRules: { asteroids: false, mice: false, shops: true },
+                maxEnemies: 1
+            },
+            10: {
+                description: "First Boss Battle",
+                objectives: { ratboss: 1 },
+                spawnRules: { asteroids: false, mice: false, shops: false, ratboss: true },
+                maxEnemies: 10
+            }
          };
         
         return levels[level] || levels[1];
@@ -568,8 +612,15 @@ class GameplayState extends GameState {
     update(deltaTime) {
     if (this.gameOver || this.levelComplete) return;
         
+        // Update dev control cooldowns
+        Object.keys(this.devCooldowns).forEach(key => {
+            if (this.devCooldowns[key] > 0) {
+                this.devCooldowns[key] -= deltaTime;
+            }
+        });
+        
         // Update player
-        this.game.player.update(deltaTime, this.game.keys, this.game.width);
+        this.game.player.update(deltaTime, this.game.keys, this.game.height);
         
         // Update bullets
         this.game.bullets = this.game.bullets.filter(bullet => {
@@ -577,10 +628,24 @@ class GameplayState extends GameState {
             return bullet.x < this.game.width + 10; // Remove bullets that go off right side
         });
         
-        // Update enemies
-        this.game.enemies = this.game.enemies.filter(enemy => {
+        // Update enemies (separate update and filtering to avoid array modification issues)
+        this.game.enemies.forEach(enemy => {
             enemy.update(deltaTime);
+        });
+        
+        // Then filter enemies
+        this.game.enemies = this.game.enemies.filter(enemy => {
+            // Remove enemies that go off left side or defeated rat bosses
+            if (enemy instanceof RatBoss && enemy.phase === 'defeated' && enemy.defeatTimer <= 0) {
+                return false; // Remove defeated rat boss
+            }
             return enemy.x > -50; // Remove enemies that go off left side
+        });
+        
+        // Update proximity bombs
+        this.game.proximityBombs = this.game.proximityBombs.filter(bomb => {
+            bomb.update(deltaTime);
+            return !bomb.exploded;
         });
         
         // Update stars
@@ -592,10 +657,17 @@ class GameplayState extends GameState {
             return particle.life > 0;
         });
         
+        // Update proximity bombs
+        this.game.proximityBombs = this.game.proximityBombs.filter(bomb => {
+            bomb.update(deltaTime);
+            return !bomb.exploded;
+        });
+        
         // Update metal drops
         this.game.metal = this.game.metal.filter(metal => {
             metal.update(deltaTime);
-            return !metal.collected;
+            // Remove if collected or drifted too far off-screen
+            return !metal.collected && metal.x > -100;
         });
         
         // Spawn enemies based on level rules
@@ -653,6 +725,24 @@ class GameplayState extends GameState {
             }
         }
         
+        if (rules.snakes && objectives.snakes) {
+            for (let i = 0; i < objectives.snakes; i++) {
+                this.enemyPool.push({ type: 'snake', priority: Math.random() });
+            }
+        }
+        
+        if (rules.birds && objectives.birds) {
+            for (let i = 0; i < objectives.birds; i++) {
+                this.enemyPool.push({ type: 'bird', priority: Math.random() });
+            }
+        }
+        
+        if (rules.ratboss && objectives.ratboss) {
+            for (let i = 0; i < objectives.ratboss; i++) {
+                this.enemyPool.push({ type: 'ratboss', priority: Math.random() });
+            }
+        }
+        
         // Sort by priority to create varied spawning order
         this.enemyPool.sort((a, b) => a.priority - b.priority);
         
@@ -686,6 +776,18 @@ class GameplayState extends GameState {
             case 'shop':
                 enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level, 2);
                 this.spawnCounts.shops++;
+                break;
+            case 'snake':
+                enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level, 3);
+                this.spawnCounts.snakes++;
+                break;
+            case 'bird':
+                enemy = new Enemy(this.game.width + 50, y, this.game.gameData.level, 4);
+                this.spawnCounts.birds++;
+                break;
+            case 'ratboss':
+                enemy = new RatBoss(this.game.width + 50, y, this.game);
+                this.spawnCounts.ratboss++;
                 break;
         }
         
@@ -731,18 +833,26 @@ class GameplayState extends GameState {
         console.log(`Level ${this.game.gameData.level} Complete!`);
         this.game.gameData.score += 1000; // Bonus for completing level
         
-        // Wait a moment then advance to next level
-        setTimeout(() => {
-            this.game.gameData.level++;
-            this.setupLevel(this.game.gameData.level);
-            this.levelComplete = false;
-            
-            // Clear existing enemies and reset spawn counts
-            this.game.enemies = [];
-            this.game.particles = [];
-            this.game.metal = [];
-            this.spawnCounts = { asteroids: 0, mice: 0, shops: 0 };
-        }, 2000);
+        // Check if this was the final level (level 10)
+        if (this.game.gameData.level >= 10) {
+            // Game completed! Show win screen
+            setTimeout(() => {
+                this.game.changeState('win');
+            }, 2000);
+        } else {
+            // Wait a moment then advance to next level
+            setTimeout(() => {
+                this.game.gameData.level++;
+                this.setupLevel(this.game.gameData.level);
+                this.levelComplete = false;
+                
+                // Clear existing enemies and reset spawn counts
+                this.game.enemies = [];
+                this.game.particles = [];
+                this.game.metal = [];
+                this.spawnCounts = { asteroids: 0, mice: 0, shops: 0, snakes: 0, birds: 0, ratboss: 0 };
+            }, 2000);
+        }
     }
     
     checkCollisions() {
@@ -754,6 +864,15 @@ class GameplayState extends GameState {
                     if (enemy.enemyType === 2) {
                         return;
                     }
+                    
+                    // Check if it's a rat boss
+                    if (enemy instanceof RatBoss) {
+                        enemy.takeDamage(1);
+                        this.game.bullets.splice(bulletIndex, 1);
+                        this.game.gameData.score += 50; // Less points per hit for boss
+                        return; // Don't destroy boss, just damage it
+                    }
+                    
                     this.game.bullets.splice(bulletIndex, 1);
                     this.game.enemies.splice(enemyIndex, 1);
                     this.game.gameData.score += 100;
@@ -782,6 +901,29 @@ class GameplayState extends GameState {
                         return;
                     }
                 }
+                
+                // Check if it's a rat boss
+                if (enemy instanceof RatBoss) {
+                    // Boss collision does massive damage
+                    if (this.game.player.shieldLevel > 0) {
+                        this.game.player.shieldLevel = 0; // Destroy all shields
+                        this.game.player.shieldRechargeTimer = 0;
+                    } else {
+                        this.game.gameData.lives = Math.max(0, this.game.gameData.lives - 2); // Lose 2 lives
+                    }
+                    
+                    // Trigger hit effects on player
+                    this.game.player.hit();
+                    this.game.player.decloak();
+                    this.game.triggerScreenShake(15, 500);
+                    
+                    if (this.game.gameData.lives <= 0) {
+                        this.gameOver = true;
+                        this.game.changeState('gameOver');
+                    }
+                    return; // Don't destroy boss
+                }
+                
                 this.game.enemies.splice(index, 1);
                 this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                 
@@ -808,6 +950,52 @@ class GameplayState extends GameState {
                 }
             }
         });
+        
+        // Player vs Proximity Bomb
+        this.game.proximityBombs.forEach((bomb, index) => {
+            if (this.checkCollision(this.game.player, bomb) && !bomb.exploded) {
+                bomb.explode();
+            }
+        });
+        
+        // Player vs Rat Boss Tail Attack
+        this.game.enemies.forEach(enemy => {
+            if (enemy instanceof RatBoss && enemy.currentAttack === 'tail' && enemy.tailAttackTimer < 500) {
+                if (this.checkTailAttackCollision(this.game.player, enemy)) {
+                    // Tail attack hits player
+                    if (this.game.player.shieldLevel > 0) {
+                        this.game.player.shieldLevel--;
+                        this.game.player.shieldRechargeTimer = 0;
+                    } else {
+                        this.game.gameData.lives--;
+                    }
+                    
+                    this.game.player.hit();
+                    this.game.player.decloak();
+                    this.game.triggerScreenShake(10, 400);
+                    
+                    if (this.game.gameData.lives <= 0) {
+                        this.gameOver = true;
+                        this.game.changeState('gameOver');
+                    }
+                }
+            }
+        });
+    }
+    
+    checkTailAttackCollision(player, boss) {
+        // Check if player is in the tail attack zone
+        // The tail attack creates a curved damage zone
+        const tailStartX = boss.x + boss.width;
+        const tailStartY = boss.y + boss.height * 0.5;
+        const tailEndX = tailStartX + 150;
+        const tailEndY = tailStartY + 100;
+        
+        // Simple rectangular collision check for the tail attack zone
+        return player.x < tailEndX && 
+               player.x + player.width > tailStartX &&
+               player.y < tailEndY &&
+               player.y + player.height > tailStartY - 50;
     }
     
     checkCollision(rect1, rect2) {
@@ -854,6 +1042,9 @@ class GameplayState extends GameState {
         // Draw particles
         this.game.particles.forEach(particle => particle.render(ctx));
         
+        // Draw proximity bombs
+        this.game.proximityBombs.forEach(bomb => bomb.render(ctx));
+        
         // Draw metal drops
         this.game.metal.forEach(metal => metal.render(ctx));
         
@@ -862,6 +1053,9 @@ class GameplayState extends GameState {
         
         // Draw bullets
         this.game.bullets.forEach(bullet => bullet.render(ctx));
+        
+        // Draw proximity bombs
+        this.game.proximityBombs.forEach(bomb => bomb.render(ctx));
         
         // Draw player
         if (this.game.player) {
@@ -1022,41 +1216,48 @@ class GameplayState extends GameState {
     handleInput(keys) {
         // Escape handled globally in Game.bindEvents (toggle pause)
         
-        // Dev controls
-        if (keys['Digit0'] || keys['Key0']) {
+        // Dev controls with cooldowns
+        if ((keys['Digit0'] || keys['Key0']) && this.devCooldowns.metal <= 0) {
             this.game.gameData.metal += 100;
             console.log(`Added 100 metal! Total: ${this.game.gameData.metal}`);
+            this.devCooldowns.metal = 500; // 0.5 second cooldown
         }
         
-        if (keys['Digit9'] || keys['Key9']) {
+        if ((keys['Digit9'] || keys['Key9']) && this.devCooldowns.turbo <= 0) {
             if (this.game.player) {
                 this.game.player.turboLevel = 1;
                 this.game.player.turboCharge = 5;
                 console.log('Turbo Thrust granted via dev controls!');
+                this.devCooldowns.turbo = 1000; // 1 second cooldown
             }
         }
         
-        // Level jump keys for testing
-        if (keys['Digit1'] || keys['Key1']) {
-            this.game.gameData.level = 1;
-            this.setupLevel(1);
-            this.resetLevelState();
-        } else if (keys['Digit2'] || keys['Key2']) {
-            this.game.gameData.level = 2;
-            this.setupLevel(2);
-            this.resetLevelState();
-        } else if (keys['Digit3'] || keys['Key3']) {
-            this.game.gameData.level = 3;
-            this.setupLevel(3);
-            this.resetLevelState();
-        } else if (keys['Digit4'] || keys['Key4']) {
-            this.game.gameData.level = 4;
-            this.setupLevel(4);
-            this.resetLevelState();
-        } else if (keys['Digit5'] || keys['Key5']) {
-            this.game.gameData.level = 5;
-            this.setupLevel(5);
-            this.resetLevelState();
+        // Level navigation keys for testing with cooldowns
+        if ((keys['Digit1'] || keys['Key1']) && this.devCooldowns.levelNav <= 0) {
+            // Previous level (if greater than 1)
+            if (this.game.gameData.level > 1) {
+                const prevLevel = this.game.gameData.level - 1;
+                this.game.gameData.level = prevLevel;
+                this.setupLevel(prevLevel);
+                this.resetLevelState();
+                console.log(`Went to previous level: ${prevLevel}`);
+                this.devCooldowns.levelNav = 1000; // 1 second cooldown
+            } else {
+                console.log('Already at level 1');
+            }
+        } else if ((keys['Digit2'] || keys['Key2']) && this.devCooldowns.levelNav <= 0) {
+            // Next level (up to max level)
+            const maxLevel = 10; // Based on the levels we have defined
+            if (this.game.gameData.level < maxLevel) {
+                const nextLevel = this.game.gameData.level + 1;
+                this.game.gameData.level = nextLevel;
+                this.setupLevel(nextLevel);
+                this.resetLevelState();
+                console.log(`Went to next level: ${nextLevel}`);
+                this.devCooldowns.levelNav = 1000; // 1 second cooldown
+            } else {
+                console.log(`Already at max level: ${maxLevel}`);
+            }
         }
     }
     
@@ -1068,7 +1269,7 @@ class GameplayState extends GameState {
         this.game.enemies = [];
         this.game.particles = [];
         this.game.metal = [];
-        this.spawnCounts = { asteroids: 0, mice: 0, shops: 0 };
+        this.spawnCounts = { asteroids: 0, mice: 0, shops: 0, snakes: 0, birds: 0, ratboss: 0 };
         
         // Reset enemy pool for new level
         this.enemyPool = null;
@@ -1159,6 +1360,67 @@ class GameOverState extends GameState {
         }
         if (keys['KeyM']) {
             this.game.goBack(); // This will go back to main menu
+        }
+    }
+}
+
+// Win State
+class WinState extends GameState {
+    constructor(game) {
+        super(game);
+    }
+    
+    enter() {
+        // Save final score and level to local storage
+        HighScoreState.saveHighScore(this.game.gameData.score, this.game.gameData.level);
+        
+        // Update high score if needed
+        if (this.game.gameData.score > this.game.gameData.highScore) {
+            this.game.gameData.highScore = this.game.gameData.score;
+        }
+    }
+    
+    render(ctx) {
+        // Render the gameplay state first (frozen)
+        this.game.states.gameplay.render(ctx);
+        
+        // Overlay win screen
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+        ctx.fillRect(0, 0, this.game.width, this.game.height);
+        
+        ctx.fillStyle = '#00ff00';
+        ctx.font = '48px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('VICTORY!', this.game.width / 2, this.game.height / 2 - 120);
+        
+        ctx.fillStyle = '#ffff00';
+        ctx.font = '24px monospace';
+        ctx.fillText('You have defeated the Rat Boss!', this.game.width / 2, this.game.height / 2 - 60);
+        ctx.fillText('Congratulations on completing the game!', this.game.width / 2, this.game.height / 2 - 20);
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '20px monospace';
+        ctx.fillText(`Final Score: ${this.game.gameData.score}`, this.game.width / 2, this.game.height / 2 + 40);
+        ctx.fillText(`Level Reached: ${this.game.gameData.level}`, this.game.width / 2, this.game.height / 2 + 80);
+        ctx.fillText(`High Score: ${this.game.gameData.highScore}`, this.game.width / 2, this.game.height / 2 + 120);
+        
+        ctx.font = '18px monospace';
+        ctx.fillText('Press SPACE to play again', this.game.width / 2, this.game.height / 2 + 180);
+        ctx.fillText('Press M for main menu', this.game.width / 2, this.game.height / 2 + 220);
+    }
+    
+    handleInput(keys) {
+        if (keys['Space']) {
+            // Reset game and start over
+            this.game.gameData.level = 1;
+            this.game.gameData.lives = 3;
+            this.game.gameData.score = 0;
+            this.game.gameData.metal = 0;
+            this.game.gameData.shopVisited = false;
+            this.game.changeState('gameplay');
+        }
+        if (keys['KeyM']) {
+            this.game.changeState('menu');
         }
     }
 }
@@ -1392,7 +1654,7 @@ class HighScoreState extends GameState {
             constructor(game) {
                 super(game);
                 this.selectedOption = 0;
-                this.options = ['Shield Upgrade (50 Metal)', 'Agility Boost (30 Metal)', 'Turbo Thrust (100 Metal)', 'Return to Game'];
+                this.options = ['Shield Upgrade (50 Metal)', 'Agility Boost (30 Metal)', 'Turbo Thrust (100 Metal)', 'Double Bullet (80 Metal)', 'Triple Bullet (120 Metal)', 'Rocket Launcher (150 Metal)', 'Return to Game'];
                 this.keyCooldown = 0;
                 this.cooldownTime = 200; // 0.2 seconds in milliseconds
                 this.enterCooldown = 0; // Will be set in enter() method
@@ -1525,7 +1787,37 @@ class HighScoreState extends GameState {
                     console.log('Not enough metal!');
                 }
                 break;
-            case 3: // Return to Game
+            case 3: // Double Bullet
+                if (this.game.gameData.metal >= 80) {
+                    this.game.gameData.metal -= 80;
+                    this.game.player.doubleBulletLevel = 1;
+                    console.log('Double bullet acquired!');
+                    this.selectionCooldown = this.selectionCooldownTime;
+                } else {
+                    console.log('Not enough metal!');
+                }
+                break;
+            case 4: // Triple Bullet
+                if (this.game.gameData.metal >= 120) {
+                    this.game.gameData.metal -= 120;
+                    this.game.player.tripleBulletLevel = 1;
+                    console.log('Triple bullet acquired!');
+                    this.selectionCooldown = this.selectionCooldownTime;
+                } else {
+                    console.log('Not enough metal!');
+                }
+                break;
+            case 5: // Rocket Launcher
+                if (this.game.gameData.metal >= 150) {
+                    this.game.gameData.metal -= 150;
+                    this.game.player.secondaryWeaponLevel = 1;
+                    console.log('Rocket launcher acquired!');
+                    this.selectionCooldown = this.selectionCooldownTime;
+                } else {
+                    console.log('Not enough metal!');
+                }
+                break;
+            case 6: // Return to Game
                 this.game.goBack();
                 break;
         }
@@ -1571,15 +1863,29 @@ class Player {
         this.maxTurboCharge = 5; // Maximum turbo charge
         this.turboRechargeRate = 0.1; // Charge per second when not using
         this.turboActive = false; // Whether turbo is currently active
+        
+        // Weapon upgrades
+        this.secondaryWeaponLevel = 0; // 0 = none, 1 = rocket
+        this.doubleBulletLevel = 0; // 0 = none, 1 = second bullet
+        this.tripleBulletLevel = 0; // 0 = none, 1 = diagonal bullets
     }
     
-    update(deltaTime, keys, canvasWidth) {
-        // Movement - now vertical for side-scroller
+    update(deltaTime, keys, canvasHeight) {
+        // Movement - now 2D movement with screen wrapping and boundaries
         let currentSpeed = this.speed;
         if (this.turboActive && this.turboCharge > 0) {
             currentSpeed *= 2; // Double speed with turbo
         }
         
+        // Horizontal movement (left/right)
+        if (keys['ArrowLeft'] || keys['KeyA']) {
+            this.x -= currentSpeed * deltaTime / 1000;
+        }
+        if (keys['ArrowRight'] || keys['KeyD']) {
+            this.x += currentSpeed * deltaTime / 1000;
+        }
+        
+        // Vertical movement (up/down)
         if (keys['ArrowUp'] || keys['KeyW']) {
             this.y -= currentSpeed * deltaTime / 1000;
         }
@@ -1587,16 +1893,28 @@ class Player {
             this.y += currentSpeed * deltaTime / 1000;
         }
         
-        // Keep player in bounds (vertical bounds now)
-        this.y = Math.max(0, Math.min(canvasWidth - this.height, this.y));
+        // Screen wrapping for vertical movement (top to bottom, bottom to top)
+        if (this.y < -this.height) {
+            this.y = canvasHeight; // Wrap to bottom
+        } else if (this.y > canvasHeight) {
+            this.y = -this.height; // Wrap to top
+        }
         
-        // Shooting - now horizontal for side-scroller
+        // Keep player within horizontal boundaries (left and right edges)
+        this.x = Math.max(0, Math.min(this.game.width - this.width, this.x));
+        
+        // Shooting - uses Space key
         this.shootCooldown -= deltaTime;
-        if ((keys['Space'] || keys['ArrowRight'] || keys['KeyD']) && this.shootCooldown <= 0) {
+        if (keys['Space'] && this.shootCooldown <= 0) {
             this.shoot();
             this.shootCooldown = this.shootDelay;
             // Decloak immediately when shooting
             this.decloak();
+        }
+        
+        // Secondary weapon (Q key)
+        if (keys['KeyQ'] && this.secondaryWeaponLevel > 0) {
+            this.fireSecondaryWeapon();
         }
         
         // Turbo activation
@@ -1724,7 +2042,27 @@ class Player {
     }
     
     shoot() {
+        // Main bullet
         this.game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2, this.game));
+        
+        // Second bullet from front of ship (double bullet power-up)
+        if (this.doubleBulletLevel > 0) {
+            this.game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2, this.game));
+        }
+        
+        // Diagonal bullets (triple bullet power-up)
+        if (this.tripleBulletLevel > 0) {
+            // Up diagonal bullet
+            this.game.bullets.push(new DiagonalBullet(this.x + this.width, this.y + this.height / 2 - 2, this.game, -45));
+            // Down diagonal bullet
+            this.game.bullets.push(new DiagonalBullet(this.x + this.width, this.y + this.height / 2 - 2, this.game, 45));
+        }
+    }
+    
+    fireSecondaryWeapon() {
+        if (this.secondaryWeaponLevel > 0) {
+            this.game.bullets.push(new Rocket(this.x + this.width / 2, this.y + this.height / 2, this.game));
+        }
     }
     
     render(ctx) {
@@ -1891,6 +2229,18 @@ class Enemy {
                 });
             }
         }
+        
+        // Initialize bird enemy phase
+        if (this.enemyType === 4) {
+            this._phase = 'entering';
+        }
+    }
+    
+    layBomb() {
+        // Create a proximity bomb at the snake's current position
+        if (this.game && this.game.proximityBombs) {
+            this.game.proximityBombs.push(new ProximityBomb(this.x, this.y, this.game));
+        }
     }
     
     update(deltaTime) {
@@ -1909,7 +2259,7 @@ class Enemy {
         // mouse
         if (this.enemyType === 1) {
             // Move horizontally for side-scroller
-            this.x -= this.speed * turboMultiplier * deltaTime / 1000;
+            this.x -= this.speed * 0.6 * turboMultiplier * deltaTime / 1000;
 
             // Only home in on player if they're not cloaked
             if (!this.game.player.isCloaked) {
@@ -1922,9 +2272,10 @@ class Enemy {
                 const rotationDiff = this.targetRotation - this.rotation;
                 this.rotation += rotationDiff * deltaTime / 1000 * 2; // Smooth rotation
                 
-                // Then home in on player
-                this.x = lerp(this.x, this.game.player.x, deltaTime / 1000);
-                this.y = lerp(this.y, this.game.player.y, deltaTime / 1000);
+                // Move toward player at reasonable speed
+                const moveSpeed = 0.3; // Balanced movement speed
+                this.x = lerp(this.x, this.game.player.x, moveSpeed * deltaTime / 1000);
+                this.y = lerp(this.y, this.game.player.y, moveSpeed * deltaTime / 1000);
             } else {
                 // When cloaked, rotate slowly as if disabled
                 this.rotation += 15 * deltaTime / 1000; // Slow disabled rotation
@@ -1936,6 +2287,41 @@ class Enemy {
             this.x -= this.speed * 0.6 * turboMultiplier * deltaTime / 1000;
             this._bobTimer = (this._bobTimer || 0) + deltaTime / 1000;
             this.y += Math.sin(this._bobTimer * 2) * 0.2;
+        }
+        // Snake enemy - moves diagonally and lays proximity bombs
+        if (this.enemyType === 3) {
+            // Move diagonally across screen
+            this.x -= this.speed * 0.8 * turboMultiplier * deltaTime / 1000;
+            this.y += Math.sin(this._diagonalTimer || 0) * 50 * turboMultiplier * deltaTime / 1000;
+            
+            this._diagonalTimer = (this._diagonalTimer || 0) + deltaTime / 1000 * 2;
+            
+            // Lay bombs periodically
+            this._bombTimer = (this._bombTimer || 0) + deltaTime;
+            if (this._bombTimer > 2000) { // Every 2 seconds
+                this.layBomb();
+                this._bombTimer = 0;
+            }
+        }
+        // Bird enemy - flies in from right, fires beam, flies out left
+        if (this.enemyType === 4) {
+            if (this._phase === 'entering') {
+                // Fly in from right
+                this.x -= this.speed * 0.5 * turboMultiplier * deltaTime / 1000;
+                if (this.x <= this.game.width - 100) {
+                    this._phase = 'firing';
+                    this._firingTimer = 0;
+                }
+            } else if (this._phase === 'firing') {
+                // Stay in position and fire beam
+                this._firingTimer += deltaTime;
+                if (this._firingTimer > 3000) { // Fire for 3 seconds
+                    this._phase = 'exiting';
+                }
+            } else if (this._phase === 'exiting') {
+                // Fly out to left
+                this.x -= this.speed * 0.8 * turboMultiplier * deltaTime / 1000;
+            }
         }
     }
     
@@ -1972,6 +2358,12 @@ class Enemy {
         } else if (this.enemyType === 2) {
             // Draw shop enemy
             this.drawShop(ctx);
+        } else if (this.enemyType === 3) {
+            // Draw snake enemy
+            this.drawSnakeEnemy(ctx);
+        } else if (this.enemyType === 4) {
+            // Draw bird enemy
+            this.drawBirdEnemy(ctx);
         }
         
         // Restore context state
@@ -2149,6 +2541,528 @@ class Enemy {
         }
         return baseColor;
     }
+    
+    drawSnakeEnemy(ctx) {
+        // Draw snake body (segmented)
+        ctx.fillStyle = '#00ff00'; // Green
+        
+        // Main body segments
+        for (let i = 0; i < 3; i++) {
+            const segmentX = this.x + i * 8;
+            const segmentY = this.y + Math.sin((this._diagonalTimer || 0) * 2 + i * 0.5) * 3;
+            ctx.fillRect(segmentX, segmentY, 8, 12);
+        }
+        
+        // Head
+        ctx.fillStyle = '#008800';
+        ctx.fillRect(this.x + 24, this.y + 2, 10, 8);
+        
+        // Eyes
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(this.x + 26, this.y + 4, 2, 2);
+        ctx.fillRect(this.x + 30, this.y + 4, 2, 2);
+        
+        // Tail
+        ctx.fillStyle = '#00aa00';
+        ctx.fillRect(this.x - 4, this.y + 4, 6, 4);
+    }
+    
+    drawBirdEnemy(ctx) {
+        // Draw bird body
+        ctx.fillStyle = '#8B4513'; // Brown
+        
+        // Main body
+        ctx.fillRect(this.x, this.y + 8, 20, 12);
+        
+        // Wings
+        ctx.fillStyle = '#654321';
+        const wingFlap = Math.sin((this._diagonalTimer || 0) * 4) * 2;
+        ctx.fillRect(this.x - 8, this.y + 6 + wingFlap, 12, 8);
+        ctx.fillRect(this.x + 16, this.y + 6 + wingFlap, 12, 8);
+        
+        // Head
+        ctx.fillStyle = '#A0522D';
+        ctx.fillRect(this.x + 18, this.y + 6, 8, 8);
+        
+        // Beak
+        ctx.fillStyle = '#FFD700';
+        ctx.fillRect(this.x + 26, this.y + 8, 4, 4);
+        
+        // Eyes
+        ctx.fillStyle = '#000';
+        ctx.fillRect(this.x + 20, this.y + 8, 2, 2);
+        
+        // Draw beam when firing
+        if (this._phase === 'firing') {
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(this.x + 30, this.y + 12);
+            ctx.lineTo(0, this.y + 12);
+            ctx.stroke();
+            
+            // Beam glow effect
+            ctx.shadowColor = '#ffff00';
+            ctx.shadowBlur = 10;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+        }
+    }
+}
+
+class RatBoss extends Enemy {
+    constructor(x, y, game) {
+        // Call Enemy constructor with special enemyType for RatBoss
+        super(x, y, game.gameData.level, 5); // enemyType 5 for RatBoss
+        
+        // Override enemy properties for boss
+        this.width = game.width / 5; // 1/5 of screen width
+        this.height = game.height / 5; // 1/5 of screen height
+        this.game = game; // Store game reference for boss functionality
+        this.maxHealth = 100;
+        this.health = this.maxHealth;
+        this.phase = 'entering'; // entering, attacking, defeated
+        this.targetX = game.width * 0.6; // Stop 40% from right edge (closer to player)
+        this.attackTimer = 3000; // Start with spawn attack already active
+        this.attackInterval = 3000; // 3 seconds between attacks
+        this.currentAttack = 'spawn'; // tail or spawn
+        this.tailAttackTimer = 0;
+        this.tailAttackDuration = 2000; // 2 seconds for tail attack
+        this.spawnAttackTimer = 1000; // Start ready to spawn first enemy
+        this.spawnAttackDuration = 10000; // 10 seconds for spawn attack (allows time to destroy enemies)
+
+        this.entranceSpeed = 200;
+        this.isVulnerable = false; // Only vulnerable after entering
+        this.spawnCount = 0; // Track how many enemies spawned in current wave
+        this.maxSpawnsPerWave = 10; // Maximum enemies per spawn wave
+        this.spawnInterval = 1000; // 1 second between individual spawns
+        this.spawnPauseDuration = 5000; // 5 second pause between waves
+        this.isInSpawnPause = false;
+        
+        // Vertical movement during spawn attack
+        this.verticalMovementTimer = 0;
+        this.verticalMovementSpeed = 100; // Speed of vertical movement
+        this.verticalMovementRange = game.height * 0.2; // Reduced range - only 20% of screen height
+        this.verticalCenter = y; // Center position for vertical movement
+    }
+    
+    update(deltaTime) {
+        // Override Enemy update method with boss-specific logic
+        const turboMultiplier = this.game.gameData.turboMultiplier || 1;
+        
+        if (this.phase === 'entering') {
+            // Slide in from right edge
+            this.x -= this.entranceSpeed * turboMultiplier * deltaTime / 1000;
+            if (this.x <= this.targetX) {
+                this.x = this.targetX;
+                this.phase = 'attacking';
+                this.isVulnerable = true;
+            }
+        } else if (this.phase === 'attacking') {
+            // Alternate between attacks
+            this.attackTimer += deltaTime;
+            if (this.attackTimer >= this.attackInterval) {
+                this.attackTimer = 0;
+                this.currentAttack = this.currentAttack === 'tail' ? 'spawn' : 'tail';
+                
+                // Reset vertical position when switching to tail attack
+                if (this.currentAttack === 'tail') {
+                    this.y = this.verticalCenter;
+                    this.verticalMovementTimer = 0;
+                }
+            }
+            
+            if (this.currentAttack === 'tail') {
+                this.performTailAttack(deltaTime);
+            } else {
+                this.performSpawnAttack(deltaTime);
+            }
+        } else if (this.phase === 'defeated') {
+            // Countdown to despawning
+            if (this.defeatTimer > 0) {
+                this.defeatTimer -= deltaTime;
+            }
+        }
+
+    }
+    
+    performTailAttack(deltaTime) {
+        this.tailAttackTimer += deltaTime;
+        if (this.tailAttackTimer >= this.tailAttackDuration) {
+            this.tailAttackTimer = 0;
+            return;
+        }
+        
+        // Create tail sweep effect (damage zone)
+        if (this.tailAttackTimer < 500) { // First 0.5 seconds create damage zone
+            this.createTailDamageZone();
+        }
+    }
+    
+    performSpawnAttack(deltaTime) {
+        this.spawnAttackTimer += deltaTime;
+        
+        // Update vertical movement timer
+        this.verticalMovementTimer += deltaTime;
+        
+        // Calculate vertical movement using sine wave for smooth up/down motion
+        const verticalOffset = Math.sin(this.verticalMovementTimer * 0.002) * this.verticalMovementRange;
+        this.y = this.verticalCenter + verticalOffset;
+        
+        if (this.isInSpawnPause) {
+            // Check if pause is over
+            if (this.spawnAttackTimer >= this.spawnPauseDuration) {
+                this.isInSpawnPause = false;
+                this.spawnAttackTimer = 0;
+                this.spawnCount = 0;
+            }
+            return;
+        }
+        
+        // Check if we've spawned enough enemies for this wave
+        if (this.spawnCount >= this.maxSpawnsPerWave) {
+            this.isInSpawnPause = true;
+            this.spawnAttackTimer = 0;
+            return;
+        }
+        
+        // Spawn enemies at regular intervals
+        if (this.spawnAttackTimer >= this.spawnInterval) {
+            this.spawnEnemiesFromMouth();
+            this.spawnAttackTimer = 0;
+        }
+    }
+    
+    createTailDamageZone() {
+        // Create a damage zone that sweeps across the screen
+        // This will be checked in collision detection
+        this.tailDamageActive = true;
+        this.tailDamageTimer = 1000; // 1 second of damage
+    }
+    
+    spawnEnemiesFromMouth() {
+        // Spawn 1 enemy from the boss mouth
+        const enemyType = 1; // Always spawn mice/rats from the rat boss
+        
+        // Spawn at absolute screen positions - right side of screen, random height
+        const spawnX = this.game.width - 150; // Fixed position from right edge (more on-screen)
+        const spawnY = 100 + Math.random() * (this.game.height - 200); // Random height in middle area
+        
+        const enemy = new Enemy(spawnX, spawnY, this.game.gameData.level, enemyType);
+        enemy.game = this.game;
+        enemy.spawnedByBoss = true; // Mark this enemy as boss-spawned
+        
+        // Add to main game enemies array
+        this.game.enemies.push(enemy);
+        
+        // Increment spawn count for this wave
+        this.spawnCount++;
+    }
+    
+    takeDamage(amount) {
+        if (!this.isVulnerable) return;
+        
+        this.health -= amount;
+        if (this.health <= 0) {
+            this.defeat();
+        }
+        
+        // Create damage effect
+        this.createDamageEffect();
+    }
+    
+    defeat() {
+        this.phase = 'defeated';
+        this.isVulnerable = false;
+        
+        // Create massive explosion
+        for (let i = 0; i < 50; i++) {
+            const angle = Math.random() * 360;
+            const speed = Math.random() * 8 + 4;
+            this.game.particles.push(new BossExplosion(this.x + this.width / 2, this.y + this.height / 2, angle, speed));
+        }
+        
+        // Drop 100 metal
+        for (let i = 0; i < 20; i++) { // Spread out the metal drops
+            const offsetX = (Math.random() - 0.5) * 100;
+            const offsetY = (Math.random() - 0.5) * 60;
+            const metal = new Metal(this.x + this.width / 2 + offsetX, this.y + this.height / 2 + offsetY, this.game);
+            this.game.metal.push(metal);
+        }
+        
+        // Trigger massive screen shake
+        if (this.game.triggerScreenShake) {
+            this.game.triggerScreenShake(200, 1000);
+        }
+        
+        // Mark boss for removal after a short delay to allow explosion effects
+        this.defeatTimer = 2000; // 2 seconds delay
+    }
+    
+    createDamageEffect() {
+        // Create damage particles
+        for (let i = 0; i < 8; i++) {
+            const angle = Math.random() * 360;
+            const speed = Math.random() * 3 + 2;
+            this.game.particles.push(new DamageParticle(this.x + this.width / 2, this.y + this.height / 2, angle, speed));
+        }
+    }
+    
+    render(ctx) {
+        // Draw health bar above boss
+        this.renderHealthBar(ctx);
+        
+        // Draw boss body
+        ctx.fillStyle = '#8B4513'; // Brown
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        
+        // Draw boss details
+        this.drawBossDetails(ctx);
+        
+        // Draw attack effects
+        if (this.currentAttack === 'tail' && this.tailAttackTimer < 500) {
+            this.drawTailAttack(ctx);
+        }
+        
+        // Draw spawn pause indicator
+        if (this.isInSpawnPause) {
+            this.drawSpawnPauseIndicator(ctx);
+        }
+    }
+    
+    renderHealthBar(ctx) {
+        const barWidth = this.width;
+        const barHeight = 10;
+        const barX = this.x;
+        const barY = this.y - 20;
+        
+        // Background
+        ctx.fillStyle = '#333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Health bar
+        const healthPercent = this.health / this.maxHealth;
+        ctx.fillStyle = healthPercent > 0.5 ? '#00ff00' : healthPercent > 0.25 ? '#ffff00' : '#ff0000';
+        ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
+        
+        // Border
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        
+        // Health text
+        ctx.fillStyle = '#fff';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${this.health}/${this.maxHealth}`, barX + barWidth / 2, barY + barHeight / 2 + 4);
+    }
+    
+    drawBossDetails(ctx) {
+        // Eyes
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(this.x + this.width * 0.2, this.y + this.height * 0.2, 8, 8);
+        ctx.fillRect(this.x + this.width * 0.7, this.y + this.height * 0.2, 8, 8);
+        
+        // Mouth
+        ctx.fillStyle = '#000';
+        ctx.fillRect(this.x + this.width * 0.4, this.y + this.height * 0.6, this.width * 0.2, this.height * 0.3);
+        
+        // Ears
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(this.x - 5, this.y - 5, 10, 15);
+        ctx.fillRect(this.x + this.width - 5, this.y - 5, 10, 15);
+        
+        // Tail (curved)
+        ctx.strokeStyle = '#654321';
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width, this.y + this.height * 0.5);
+        ctx.quadraticCurveTo(this.x + this.width + 50, this.y + this.height * 0.3, this.x + this.width + 80, this.y + this.height * 0.7);
+        ctx.stroke();
+    }
+    
+    drawTailAttack(ctx) {
+        // Draw tail sweep effect
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+        ctx.lineWidth = 20;
+        ctx.beginPath();
+        ctx.moveTo(this.x + this.width, this.y + this.height * 0.5);
+        ctx.quadraticCurveTo(this.x + this.width + 100, this.y + this.height * 0.2, this.x + this.width + 150, this.y + this.height * 0.8);
+        ctx.stroke();
+    }
+    
+    drawSpawnPauseIndicator(ctx) {
+        // Draw a visual indicator that spawn attack is paused
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
+        ctx.font = '16px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('SPAWN PAUSED', this.x + this.width / 2, this.y - 30);
+        
+        // Draw a countdown bar
+        const barWidth = this.width;
+        const barHeight = 4;
+        const barX = this.x;
+        const barY = this.y - 40;
+        
+        // Background
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.3)';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        
+        // Progress bar
+        const progress = this.spawnAttackTimer / this.spawnPauseDuration;
+        ctx.fillStyle = 'rgba(255, 255, 0, 0.8)';
+        ctx.fillRect(barX, barY, barWidth * progress, barHeight);
+    }
+}
+
+class BossExplosion {
+    constructor(x, y, angle, speed) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * speed;
+        this.vy = Math.sin(angle * Math.PI / 180) * speed;
+        this.life = 1;
+        this.decay = 0.02;
+        this.size = Math.random() * 6 + 4;
+        this.color = ['#ff6600', '#ff0000', '#ffff00'][Math.floor(Math.random() * 3)];
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+    }
+}
+
+class DamageParticle {
+    constructor(x, y, angle, speed) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 2) * speed;
+        this.vy = Math.sin(angle * Math.PI / 2) * speed;
+        this.life = 1;
+        this.decay = 0.05;
+        this.size = Math.random() * 3 + 2;
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = '#ff0000';
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.fillStyle = '#ffff00';
+        ctx.fillRect(this.x + 2, this.y + 2, this.size - 4, this.size - 4);
+        ctx.globalAlpha = 1;
+    }
+}
+
+class ProximityBomb {
+    constructor(x, y, game) {
+        this.x = x;
+        this.y = y;
+        this.width = 8;
+        this.height = 8;
+        this.game = game;
+        this.explosionRadius = 60;
+        this.exploded = false;
+        this.blinkTimer = 0;
+        this.blinkInterval = 200;
+    }
+    
+    update(deltaTime) {
+        this.blinkTimer += deltaTime;
+        
+        // Check if player is close enough to explode
+        if (!this.exploded && this.game.player) {
+            const dx = this.x - this.game.player.x;
+            const dy = this.y - this.game.player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < this.explosionRadius) {
+                this.explode();
+            }
+        }
+    }
+    
+    explode() {
+        this.exploded = true;
+        
+        // Create explosion particles
+        for (let i = 0; i < 20; i++) {
+            const angle = Math.random() * 360;
+            const speed = Math.random() * 5 + 3;
+            this.game.particles.push(new ExplosionParticle(this.x, this.y, angle, speed));
+        }
+        
+        // Trigger screen shake
+        if (this.game.triggerScreenShake) {
+            this.game.triggerScreenShake(50, 300);
+        }
+        
+        // Check if player was hit
+        if (this.game.player) {
+            const dx = this.x - this.game.player.x;
+            const dy = this.y - this.game.player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < this.explosionRadius) {
+                this.game.player.hit();
+            }
+        }
+    }
+    
+    render(ctx) {
+        if (this.exploded) return;
+        
+        // Blinking effect
+        if (Math.floor(this.blinkTimer / this.blinkInterval) % 2 === 0) {
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            
+            // Add glow effect
+            ctx.shadowColor = '#ff0000';
+            ctx.shadowBlur = 8;
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            ctx.shadowBlur = 0;
+        }
+    }
+}
+
+class ExplosionParticle {
+    constructor(x, y, angle, speed) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * speed;
+        this.vy = Math.sin(angle * Math.PI / 180) * speed;
+        this.life = 1;
+        this.decay = 0.05;
+        this.size = Math.random() * 4 + 2;
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = '#ff6600';
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+    }
 }
 
 class Bullet {
@@ -2170,6 +3084,150 @@ class Bullet {
     render(ctx) {
         ctx.fillStyle = '#00ffff';
         ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+}
+
+class DiagonalBullet extends Bullet {
+    constructor(x, y, game, angle) {
+        super(x, y, game);
+        this.angle = angle;
+        this.speed = 400; // Slightly slower than regular bullets
+    }
+    
+    update(deltaTime) {
+        // Move diagonally based on angle
+        const turboMultiplier = this.game.gameData.turboMultiplier || 1;
+        const radians = this.angle * Math.PI / 180;
+        this.x += Math.cos(radians) * this.speed * turboMultiplier * deltaTime / 1000;
+        this.y += Math.sin(radians) * this.speed * turboMultiplier * deltaTime / 1000;
+    }
+    
+    render(ctx) {
+        ctx.fillStyle = '#ff00ff'; // Magenta for diagonal bullets
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+    }
+}
+
+class Rocket extends Bullet {
+    constructor(x, y, game) {
+        super(x, y, game);
+        this.width = 6;
+        this.height = 6;
+        this.speed = 300;
+        this.deployed = false;
+        this.deployTimer = 0;
+        this.deployDelay = 500; // 0.5 seconds to deploy
+        this.target = null;
+        this.smokeTimer = 0;
+        this.smokeInterval = 100; // Smoke every 100ms
+    }
+    
+    update(deltaTime) {
+        if (!this.deployed) {
+            // Deploy phase - move out from under ship
+            this.deployTimer += deltaTime;
+            if (this.deployTimer >= this.deployDelay) {
+                this.deployed = true;
+            } else {
+                // Move slowly out from under ship
+                this.x += 50 * deltaTime / 1000;
+            }
+        } else {
+            // Find nearest target
+            if (!this.target) {
+                this.findTarget();
+            }
+            
+            if (this.target) {
+                // Home in on target
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance > 0) {
+                    this.x += (dx / distance) * this.speed * deltaTime / 1000;
+                    this.y += (dy / distance) * this.speed * deltaTime / 1000;
+                }
+            } else {
+                // Move forward if no target
+                this.x += this.speed * deltaTime / 1000;
+            }
+            
+            // Create smoke trail
+            this.smokeTimer += deltaTime;
+            if (this.smokeTimer >= this.smokeInterval) {
+                this.createSmoke();
+                this.smokeTimer = 0;
+            }
+        }
+    }
+    
+    findTarget() {
+        let nearestDistance = Infinity;
+        let nearestEnemy = null;
+        
+        for (const enemy of this.game.enemies) {
+            const dx = enemy.x - this.x;
+            const dy = enemy.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestEnemy = enemy;
+            }
+        }
+        
+        this.target = nearestEnemy;
+    }
+    
+    createSmoke() {
+        // Create smoke particles behind the rocket
+        for (let i = 0; i < 3; i++) {
+            const offsetX = Math.random() * 10 - 5;
+            const offsetY = Math.random() * 10 - 5;
+            this.game.particles.push(new SmokeParticle(this.x - 10 + offsetX, this.y + offsetY));
+        }
+    }
+    
+    render(ctx) {
+        if (!this.deployed) {
+            // Draw deploying rocket
+            ctx.fillStyle = '#888888';
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+        } else {
+            // Draw active rocket
+            ctx.fillStyle = '#ff6600';
+            ctx.fillRect(this.x, this.y, this.width, this.height);
+            
+            // Draw thruster flame
+            ctx.fillStyle = '#ffff00';
+            ctx.fillRect(this.x - 8, this.y + 1, 4, 4);
+        }
+    }
+}
+
+class SmokeParticle {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.random() * 2 - 1;
+        this.vy = Math.random() * 2 - 1;
+        this.life = 1;
+        this.decay = 0.02;
+        this.size = Math.random() * 3 + 2;
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = '#666666';
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
     }
 }
 
