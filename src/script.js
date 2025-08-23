@@ -625,7 +625,18 @@ class GameplayState extends GameState {
         // Update bullets
         this.game.bullets = this.game.bullets.filter(bullet => {
             bullet.update(deltaTime);
-            return bullet.x < this.game.width + 10; // Remove bullets that go off right side
+            
+            // Remove bullets that go off right side
+            if (bullet.x > this.game.width + 10) {
+                return false;
+            }
+            
+            // Remove rockets that have exceeded their lifetime
+            if (bullet instanceof Rocket && bullet.age >= bullet.lifetime) {
+                return false;
+            }
+            
+            return true;
         });
         
         // Update enemies (separate update and filtering to avoid array modification issues)
@@ -655,12 +666,6 @@ class GameplayState extends GameState {
         this.game.particles = this.game.particles.filter(particle => {
             particle.update(deltaTime);
             return particle.life > 0;
-        });
-        
-        // Update proximity bombs
-        this.game.proximityBombs = this.game.proximityBombs.filter(bomb => {
-            bomb.update(deltaTime);
-            return !bomb.exploded;
         });
         
         // Update metal drops
@@ -876,6 +881,24 @@ class GameplayState extends GameState {
                         return; // Don't destroy boss, just damage it
                     }
                     
+                    // Handle rocket collisions differently
+                    if (bullet instanceof Rocket) {
+                        // Rockets explode on impact and destroy the enemy
+                        this.game.bullets.splice(bulletIndex, 1);
+                        this.game.enemies.splice(enemyIndex, 1);
+                        this.game.gameData.score += 100;
+                        
+                        // Create rocket explosion (bigger than normal bullet)
+                        this.createRocketExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+                        
+                        // Create metal drop (mice drop 3, others drop 1)
+                        this.createMetalDrop(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.enemyType);
+                        
+                        console.log('Rocket destroyed enemy!');
+                        return;
+                    }
+                    
+                    // Regular bullet collision
                     this.game.bullets.splice(bulletIndex, 1);
                     this.game.enemies.splice(enemyIndex, 1);
                     this.game.gameData.score += 100;
@@ -1072,11 +1095,25 @@ class GameplayState extends GameState {
         // Create yellow beam damage particles around the player
         const player = this.game.player;
         for (let i = 0; i < 8; i++) {
-            const angle = Math.random() * 360;
+            const angle = Math.random() * 0.5 + 2;
             const speed = Math.random() * 4 + 2;
             const x = player.x + player.width / 2;
             const y = player.y + player.height / 2;
             this.game.particles.push(new BeamDamageParticle(x, y, angle, speed));
+        }
+    }
+    
+    createRocketExplosion(x, y) {
+        // Create a bigger explosion for rockets
+        for (let i = 0; i < 25; i++) { // More particles than normal explosion
+            const angle = Math.random() * 360;
+            const speed = Math.random() * 6 + 4; // Faster particles
+            this.game.particles.push(new RocketExplosionParticle(x, y, angle, speed));
+        }
+        
+        // Trigger screen shake for rocket explosion
+        if (this.game.triggerScreenShake) {
+            this.game.triggerScreenShake(8, 200);
         }
     }
     
@@ -1145,6 +1182,38 @@ class GameplayState extends GameState {
         
         // Draw turbo bar
         this.renderTurboBar(ctx);
+        
+        // Draw rocket cooldown bar (only if player has rockets)
+        if (this.game.player.secondaryWeaponLevel > 0) {
+            this.renderRocketCooldownBar(ctx);
+        }
+    }
+    
+    renderRocketCooldownBar(ctx) {
+        const barWidth = 120;
+        const barHeight = 15;
+        const barX = this.game.width - barWidth - 20;
+        const barY = 20;
+        
+        // Calculate cooldown progress
+        const cooldownProgress = this.game.player.rocketCooldown / this.game.player.rocketCooldownTime;
+        
+        this.renderBar(ctx, {
+            x: barX,
+            y: barY,
+            width: barWidth,
+            height: barHeight,
+            label: 'ROCKET',
+            value: 1 - cooldownProgress, // Invert so full bar means ready
+            maxValue: 1,
+            backgroundColor: '#333',
+            foregroundColor: cooldownProgress > 0 ? '#ff6600' : '#00ff00', // Orange when cooldown, green when ready
+            borderColor: '#fff',
+            textColor: '#fff',
+            showSegments: false,
+            showBorder: true,
+            showLabel: true
+        });
     }
     
     renderBar(ctx, options) {
@@ -1353,6 +1422,7 @@ class GameplayState extends GameState {
         console.log(`Spawn Counts:`, this.spawnCounts);
         console.log(`Enemies on screen: ${this.game.enemies.length}`);
         console.log(`Metal on screen: ${this.game.metal.length}`);
+        console.log(`Landmines on screen: ${this.game.proximityBombs.length}`);
         console.log(`Enemy Pool: ${this.enemyPool ? this.enemyPool.length : 'null'}`);
         console.log('========================');
     }
@@ -1955,6 +2025,10 @@ class Player {
         this.secondaryWeaponLevel = 0; // 0 = none, 1 = rocket
         this.doubleBulletLevel = 0; // 0 = none, 1 = second bullet
         this.tripleBulletLevel = 0; // 0 = none, 1 = diagonal bullets
+        
+        // Rocket cooldown system
+        this.rocketCooldown = 0;
+        this.rocketCooldownTime = 1600; // 1.6 seconds between rockets
     }
     
     update(deltaTime, keys, canvasHeight) {
@@ -2028,6 +2102,11 @@ class Player {
         // Update beam hit cooldown
         if (this.beamHitCooldown > 0) {
             this.beamHitCooldown -= deltaTime;
+        }
+        
+        // Update rocket cooldown
+        if (this.rocketCooldown > 0) {
+            this.rocketCooldown -= deltaTime;
         }
     }
     
@@ -2192,8 +2271,10 @@ class Player {
     }
     
     fireSecondaryWeapon() {
-        if (this.secondaryWeaponLevel > 0) {
+        if (this.secondaryWeaponLevel > 0 && this.rocketCooldown <= 0) {
             this.game.bullets.push(new Rocket(this.x + this.width / 2, this.y + this.height / 2, this.game));
+            this.rocketCooldown = this.rocketCooldownTime;
+            console.log('Rocket fired! Cooldown active for', (this.rocketCooldownTime / 1000).toFixed(1), 'seconds');
         }
     }
     
@@ -2279,11 +2360,13 @@ class Player {
          
          
          
-                  // Reset global alpha
-         ctx.globalAlpha = 1;
-     }
-     
-                       drawTurboFlames(ctx) {
+                          // Reset global alpha
+        ctx.globalAlpha = 1;
+    }
+    
+
+    
+    drawTurboFlames(ctx) {
            // Draw animated flames behind the ship when turbo is active
            const time = Date.now() * 0.01; // Animation speed
            const flameBaseX = this.x - 15; // Closer to ship to avoid clipping
@@ -2373,7 +2456,7 @@ class Enemy {
         if (this.game && this.game.proximityBombs) {
             const bomb = new ProximityBomb(this.x, this.y, this.game);
             this.game.proximityBombs.push(bomb);
-            console.log(`Snake laid landmine at (${this.x}, ${this.y})`);
+            console.log(`Snake laid landmine at (${this.x}, ${this.y}) - Total landmines: ${this.game.proximityBombs.length}`);
         }
     }
     
@@ -3124,11 +3207,45 @@ class BeamDamageParticle {
     render(ctx) {
         ctx.globalAlpha = this.life;
         ctx.fillStyle = this.color;
+        ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.size, this.size);
         
         // Add glow effect
         ctx.shadowColor = this.color;
         ctx.shadowBlur = 6;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.shadowBlur = 0;
+        
+        ctx.globalAlpha = 1;
+    }
+}
+
+class RocketExplosionParticle {
+    constructor(x, y, angle, speed) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * speed;
+        this.vy = Math.sin(angle * Math.PI / 180) * speed;
+        this.life = 1;
+        this.decay = 0.06;
+        this.size = Math.random() * 5 + 4;
+        this.color = ['#ff6600', '#ff0000', '#ffff00', '#ff8800'][Math.floor(Math.random() * 4)];
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        
+        // Add glow effect
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 8;
         ctx.fillRect(this.x, this.y, this.size, this.size);
         ctx.shadowBlur = 0;
         
@@ -3147,10 +3264,40 @@ class ProximityBomb {
         this.exploded = false;
         this.blinkTimer = 0;
         this.blinkInterval = 200;
+        
+        // Movement and despawn properties
+        this.speed = 30; // Slow drift speed
+        this.lifetime = 15000; // 15 seconds before auto-despawn
+        this.age = 0;
+        this.driftDirection = Math.random() * 360; // Random drift direction
+        this.driftSpeed = Math.random() * 20 + 10; // Random drift speed variation
     }
     
     update(deltaTime) {
         this.blinkTimer += deltaTime;
+        this.age += deltaTime;
+        
+        // Auto-despawn after lifetime
+        if (this.age >= this.lifetime) {
+            this.exploded = true; // Mark for removal
+            console.log(`Landmine auto-despawned after ${(this.lifetime / 1000).toFixed(1)}s at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
+            return;
+        }
+        
+        // Move the landmine (slow drift)
+        if (!this.exploded) {
+            const radians = this.driftDirection * Math.PI / 180;
+            this.x += Math.cos(radians) * this.driftSpeed * deltaTime / 1000;
+            this.y += Math.sin(radians) * this.driftSpeed * deltaTime / 1000;
+            
+            // Despawn if off-screen
+            if (this.x < -this.width || this.x > this.game.width + this.width || 
+                this.y < -this.height || this.y > this.game.height + this.height) {
+                this.exploded = true;
+                console.log(`Landmine drifted off-screen at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
+                return;
+            }
+        }
         
         // Check if player is close enough to explode
         if (!this.exploded && this.game.player) {
@@ -3218,6 +3365,18 @@ class ProximityBomb {
     
     render(ctx) {
         if (this.exploded) return;
+        
+        // Draw movement trail (subtle red dots showing drift direction)
+        if (this.age > 1000) { // Only show trail after 1 second
+            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = '#ff0000';
+            for (let i = 1; i <= 3; i++) {
+                const trailX = this.x - Math.cos(this.driftDirection * Math.PI / 180) * i * 8;
+                const trailY = this.y - Math.sin(this.driftDirection * Math.PI / 180) * i * 8;
+                ctx.fillRect(trailX, trailY, 2, 2);
+            }
+            ctx.globalAlpha = 1;
+        }
         
         // Blinking effect
         if (Math.floor(this.blinkTimer / this.blinkInterval) % 2 === 0) {
@@ -3352,9 +3511,22 @@ class Rocket extends Bullet {
         this.target = null;
         this.smokeTimer = 0;
         this.smokeInterval = 100; // Smoke every 100ms
+        
+        // Rocket lifetime and despawn
+        this.lifetime = 8000; // 8 seconds before auto-despawn
+        this.age = 0;
     }
     
     update(deltaTime) {
+        this.age += deltaTime;
+        
+        // Auto-despawn after lifetime
+        if (this.age >= this.lifetime) {
+            this.deployed = true; // Mark for removal
+            console.log('Rocket auto-despawned after', (this.lifetime / 1000).toFixed(1), 'seconds');
+            return;
+        }
+        
         if (!this.deployed) {
             // Deploy phase - move out from under ship
             this.deployTimer += deltaTime;
