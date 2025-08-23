@@ -555,7 +555,7 @@ class GameplayState extends GameState {
             5: {
                  description: "Survive 70 asteroids, 25 mice, and 10 snakes",
                  objectives: { asteroids: 70, mice: 25, snakes: 10 },
-                 spawnRules: { asteroids: true, mice: true, shops: false },
+                 spawnRules: { asteroids: true, mice: true, snakes: true, shops: false },
                  maxEnemies: 15
              },
             6: {
@@ -851,6 +851,9 @@ class GameplayState extends GameState {
                 this.game.particles = [];
                 this.game.metal = [];
                 this.spawnCounts = { asteroids: 0, mice: 0, shops: 0, snakes: 0, birds: 0, ratboss: 0 };
+                
+                // Reset shop visited flag for new level
+                this.game.gameData.shopVisited = false;
             }, 2000);
         }
     }
@@ -958,6 +961,43 @@ class GameplayState extends GameState {
             }
         });
         
+        // Player vs Bird Beam Attack
+        this.game.enemies.forEach(enemy => {
+            if (enemy.enemyType === 4 && this.game.player.isHitByBeam(enemy)) {
+                // Bird beam hits player
+                if (this.game.player.shieldLevel > 0) {
+                    this.game.player.shieldLevel--;
+                    this.game.player.shieldRechargeTimer = 0;
+                    console.log('Bird beam hit player! Shield damaged. Shields remaining:', this.game.player.shieldLevel);
+                } else {
+                    this.game.gameData.lives--;
+                    console.log('Bird beam hit player! Life lost. Lives remaining:', this.game.gameData.lives);
+                }
+                
+                // Trigger hit effects on player
+                this.game.player.hit();
+                // Decloak immediately when hit
+                this.game.player.decloak();
+                
+                // Set beam hit cooldown to prevent rapid damage
+                this.game.player.beamHitCooldown = this.game.player.beamHitCooldownTime;
+                
+                // Create beam damage particles for visual feedback
+                this.createBeamDamageEffect();
+                
+                // Trigger screen shake for beam hit
+                if (this.game.triggerScreenShake) {
+                    this.game.triggerScreenShake(12, 300);
+                }
+                
+                // Check for game over
+                if (this.game.gameData.lives <= 0) {
+                    this.game.gameOver = true;
+                    this.game.changeState('gameOver');
+                }
+            }
+        });
+        
         // Player vs Rat Boss Tail Attack
         this.game.enemies.forEach(enemy => {
             if (enemy instanceof RatBoss && enemy.currentAttack === 'tail' && enemy.tailAttackTimer < 500) {
@@ -1025,6 +1065,18 @@ class GameplayState extends GameState {
                 const metal = new Metal(x + offsetX, y + offsetY, this.game);
                 this.game.metal.push(metal);
             }
+        }
+    }
+    
+    createBeamDamageEffect() {
+        // Create yellow beam damage particles around the player
+        const player = this.game.player;
+        for (let i = 0; i < 8; i++) {
+            const angle = Math.random() * 360;
+            const speed = Math.random() * 4 + 2;
+            const x = player.x + player.width / 2;
+            const y = player.y + player.height / 2;
+            this.game.particles.push(new BeamDamageParticle(x, y, angle, speed));
         }
     }
     
@@ -1259,6 +1311,12 @@ class GameplayState extends GameState {
                 console.log(`Already at max level: ${maxLevel}`);
             }
         }
+        
+        // Debug key (D) to show current level status
+        if (keys['KeyD'] && this.devCooldowns.levelNav <= 0) {
+            this.showLevelDebugInfo();
+            this.devCooldowns.levelNav = 500; // 0.5 second cooldown
+        }
     }
     
     resetLevelState() {
@@ -1278,6 +1336,25 @@ class GameplayState extends GameState {
         this.game.enemySpawnTimer = 0;
         
         console.log(`Jumped to Level ${this.game.gameData.level}`);
+    }
+    
+    showLevelDebugInfo() {
+        console.log('=== LEVEL DEBUG INFO ===');
+        console.log(`Current Level: ${this.game.gameData.level}`);
+        console.log(`Level Complete: ${this.levelComplete}`);
+        console.log(`Shop Visited: ${this.game.gameData.shopVisited}`);
+        
+        if (this.currentLevelData) {
+            console.log(`Level Description: ${this.currentLevelData.description}`);
+            console.log(`Level Objectives:`, this.levelObjectives);
+            console.log(`Spawn Rules:`, this.currentLevelData.spawnRules);
+        }
+        
+        console.log(`Spawn Counts:`, this.spawnCounts);
+        console.log(`Enemies on screen: ${this.game.enemies.length}`);
+        console.log(`Metal on screen: ${this.game.metal.length}`);
+        console.log(`Enemy Pool: ${this.enemyPool ? this.enemyPool.length : 'null'}`);
+        console.log('========================');
     }
 
     
@@ -1654,7 +1731,7 @@ class HighScoreState extends GameState {
             constructor(game) {
                 super(game);
                 this.selectedOption = 0;
-                this.options = ['Shield Upgrade (50 Metal)', 'Agility Boost (30 Metal)', 'Turbo Thrust (100 Metal)', 'Double Bullet (80 Metal)', 'Triple Bullet (120 Metal)', 'Rocket Launcher (150 Metal)', 'Return to Game'];
+                this.options = ['Shield Upgrade (50 Metal)', 'Agility Boost (30 Metal)', 'Turbo Thrust (100 Metal)', 'Double Bullet (80 Metal) - 2 parallel', 'Triple Bullet (120 Metal) - 2 diagonal', 'Rocket Launcher (150 Metal)', 'Return to Game'];
                 this.keyCooldown = 0;
                 this.cooldownTime = 200; // 0.2 seconds in milliseconds
                 this.enterCooldown = 0; // Will be set in enter() method
@@ -1791,7 +1868,8 @@ class HighScoreState extends GameState {
                 if (this.game.gameData.metal >= 80) {
                     this.game.gameData.metal -= 80;
                     this.game.player.doubleBulletLevel = 1;
-                    console.log('Double bullet acquired!');
+                    console.log('Double bullet acquired! Level:', this.game.player.doubleBulletLevel);
+                    console.log('Now firing 2 parallel bullets instead of 1');
                     this.selectionCooldown = this.selectionCooldownTime;
                 } else {
                     console.log('Not enough metal!');
@@ -1801,7 +1879,12 @@ class HighScoreState extends GameState {
                 if (this.game.gameData.metal >= 120) {
                     this.game.gameData.metal -= 120;
                     this.game.player.tripleBulletLevel = 1;
-                    console.log('Triple bullet acquired!');
+                    console.log('Triple bullet acquired! Level:', this.game.player.tripleBulletLevel);
+                    if (this.game.player.doubleBulletLevel > 0) {
+                        console.log('Now firing 4 bullets total: 2 parallel + 2 diagonal');
+                    } else {
+                        console.log('Now firing 3 bullets total: 1 center + 2 diagonal');
+                    }
                     this.selectionCooldown = this.selectionCooldownTime;
                 } else {
                     console.log('Not enough metal!');
@@ -1856,6 +1939,10 @@ class Player {
         this.blinkInterval = 500; // 0.5 seconds between blinks
         this.blinkTimer = 0;
         this.isVisible = true; // For blinking effect
+        
+        // Beam hit cooldown to prevent rapid damage from continuous beam
+        this.beamHitCooldown = 0;
+        this.beamHitCooldownTime = 500; // 0.5 seconds between beam hits
         
         // Turbo system
         this.turboLevel = 0; // 0 = no turbo, 1 = has turbo
@@ -1937,6 +2024,11 @@ class Player {
         
         // Update turbo
         this.updateTurbo(deltaTime);
+        
+        // Update beam hit cooldown
+        if (this.beamHitCooldown > 0) {
+            this.beamHitCooldown -= deltaTime;
+        }
     }
     
     updateHitEffects(deltaTime) {
@@ -2009,6 +2101,26 @@ class Player {
         this.isCloaked = false;
     }
     
+    isHitByBeam(bird) {
+        // Check if player is hit by bird's beam attack
+        // Only check if bird is in firing phase and player is not in cooldown
+        if (bird._phase !== 'firing' || this.beamHitCooldown > 0) {
+            return false;
+        }
+        
+        // Check if player intersects with the beam
+        // Beam goes from bird's beak (x + 30, y + 12) to left edge (0, y + 12)
+        const beamY = bird.y + 12;
+        const beamHeight = 3; // Beam thickness
+        
+        // Check if player's vertical position intersects with beam
+        const playerCenterY = this.y + this.height / 2;
+        const beamTop = beamY - beamHeight / 2;
+        const beamBottom = beamY + beamHeight / 2;
+        
+        return playerCenterY >= beamTop && playerCenterY <= beamBottom;
+    }
+    
     updateShield(deltaTime) {
         // Recharge shield over time
         if (this.shieldLevel < this.maxShieldLevel) {
@@ -2042,20 +2154,40 @@ class Player {
     }
     
     shoot() {
-        // Main bullet
-        this.game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2, this.game));
+        // Base bullet positioning
+        const centerY = this.y + this.height / 2;
+        const bulletSpacing = 4;
         
-        // Second bullet from front of ship (double bullet power-up)
+        // Create parallel bullets based on double bullet upgrade
         if (this.doubleBulletLevel > 0) {
-            this.game.bullets.push(new Bullet(this.x + this.width, this.y + this.height / 2 - 2, this.game));
+            // Two parallel bullets in the middle
+            this.game.bullets.push(new Bullet(this.x + this.width, centerY - bulletSpacing, this.game));
+            this.game.bullets.push(new Bullet(this.x + this.width, centerY + bulletSpacing, this.game));
+        } else {
+            // Single bullet in the middle (no upgrade)
+            this.game.bullets.push(new Bullet(this.x + this.width, centerY, this.game));
         }
         
-        // Diagonal bullets (triple bullet power-up)
+        // Add diagonal bullets if triple bullet upgrade is active
         if (this.tripleBulletLevel > 0) {
             // Up diagonal bullet
-            this.game.bullets.push(new DiagonalBullet(this.x + this.width, this.y + this.height / 2 - 2, this.game, -45));
+            this.game.bullets.push(new DiagonalBullet(this.x + this.width, centerY - bulletSpacing * 2, this.game, -45));
             // Down diagonal bullet
-            this.game.bullets.push(new DiagonalBullet(this.x + this.width, this.y + this.height / 2 - 2, this.game, 45));
+            this.game.bullets.push(new DiagonalBullet(this.x + this.width, centerY + bulletSpacing * 2, this.game, 45));
+        }
+        
+        // Debug: Log bullet count when upgrades are active
+        if (Math.random() < 0.1) { // Only log occasionally to avoid spam
+            const totalBullets = this.game.bullets.length;
+            let upgradeInfo = 'Single bullet';
+            if (this.doubleBulletLevel > 0 && this.tripleBulletLevel > 0) {
+                upgradeInfo = 'Double + Triple (6 bullets)';
+            } else if (this.doubleBulletLevel > 0) {
+                upgradeInfo = 'Double bullet (2 bullets)';
+            } else if (this.tripleBulletLevel > 0) {
+                upgradeInfo = 'Triple bullet (3 bullets)';
+            }
+            console.log(`${upgradeInfo} - Total bullets: ${totalBullets}`);
         }
     }
     
@@ -2239,7 +2371,9 @@ class Enemy {
     layBomb() {
         // Create a proximity bomb at the snake's current position
         if (this.game && this.game.proximityBombs) {
-            this.game.proximityBombs.push(new ProximityBomb(this.x, this.y, this.game));
+            const bomb = new ProximityBomb(this.x, this.y, this.game);
+            this.game.proximityBombs.push(bomb);
+            console.log(`Snake laid landmine at (${this.x}, ${this.y})`);
         }
     }
     
@@ -2311,12 +2445,14 @@ class Enemy {
                 if (this.x <= this.game.width - 100) {
                     this._phase = 'firing';
                     this._firingTimer = 0;
+                    console.log('Bird started firing beam at (', this.x, ',', this.y, ')');
                 }
             } else if (this._phase === 'firing') {
                 // Stay in position and fire beam
                 this._firingTimer += deltaTime;
                 if (this._firingTimer > 3000) { // Fire for 3 seconds
                     this._phase = 'exiting';
+                    console.log('Bird finished firing beam, exiting');
                 }
             } else if (this._phase === 'exiting') {
                 // Fly out to left
@@ -2962,8 +3098,40 @@ class DamageParticle {
         ctx.globalAlpha = this.life;
         ctx.fillStyle = '#ff0000';
         ctx.fillRect(this.x, this.y, this.size, this.size);
-        ctx.fillStyle = '#ffff00';
         ctx.fillRect(this.x + 2, this.y + 2, this.size - 4, this.size - 4);
+        ctx.globalAlpha = 1;
+    }
+}
+
+class BeamDamageParticle {
+    constructor(x, y, angle, speed) {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * speed;
+        this.vy = Math.sin(angle * Math.PI / 180) * speed;
+        this.life = 1;
+        this.decay = 0.08;
+        this.size = Math.random() * 4 + 3;
+        this.color = '#ffff00'; // Yellow like the beam
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        
+        // Add glow effect
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 6;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.shadowBlur = 0;
+        
         ctx.globalAlpha = 1;
     }
 }
@@ -2998,6 +3166,7 @@ class ProximityBomb {
     
     explode() {
         this.exploded = true;
+        console.log(`Landmine exploded at (${this.x}, ${this.y})`);
         
         // Create explosion particles
         for (let i = 0; i < 20; i++) {
@@ -3011,14 +3180,38 @@ class ProximityBomb {
             this.game.triggerScreenShake(50, 300);
         }
         
-        // Check if player was hit
+        // Check if player was hit by explosion
         if (this.game.player) {
             const dx = this.x - this.game.player.x;
             const dy = this.y - this.game.player.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             if (distance < this.explosionRadius) {
+                // Damage the player (same logic as enemy collision)
+                if (this.game.player.shieldLevel > 0) {
+                    this.game.player.shieldLevel--;
+                    this.game.player.shieldRechargeTimer = 0;
+                    console.log('Landmine explosion hit player! Shield damaged. Shields remaining:', this.game.player.shieldLevel);
+                } else {
+                    this.game.gameData.lives--;
+                    console.log('Landmine explosion hit player! Life lost. Lives remaining:', this.game.gameData.lives);
+                }
+                
+                // Trigger hit effects on player
                 this.game.player.hit();
+                // Decloak immediately when hit
+                this.game.player.decloak();
+                
+                // Trigger screen shake for landmine hit
+                if (this.game.triggerScreenShake) {
+                    this.game.triggerScreenShake(15, 400);
+                }
+                
+                // Check for game over
+                if (this.game.gameData.lives <= 0) {
+                    this.game.gameOver = true;
+                    this.game.changeState('gameOver');
+                }
             }
         }
     }
@@ -3069,8 +3262,8 @@ class Bullet {
     constructor(x, y, game) {
         this.x = x;
         this.y = y;
-        this.width = 10;
-        this.height = 4;
+        this.width = 8;
+        this.height = 3;
         this.speed = 500;
         this.game = game;
     }
@@ -3082,7 +3275,46 @@ class Bullet {
     }
     
     render(ctx) {
-        ctx.fillStyle = '#00ffff';
+        // Color coding for different bullet types
+        if (this.game && this.game.player) {
+            const player = this.game.player;
+            
+            if (player.doubleBulletLevel > 0 && player.tripleBulletLevel > 0) {
+                // Both upgrades: Color code all bullets
+                const bulletIndex = this.game.bullets.indexOf(this);
+                if (bulletIndex % 4 === 0 || bulletIndex % 4 === 1) {
+                    // First two bullets (parallel middle): Cyan
+                    ctx.fillStyle = '#00ffff';
+                } else if (bulletIndex % 4 === 2) {
+                    // Third bullet (up diagonal): Magenta
+                    ctx.fillStyle = '#ff00ff';
+                } else {
+                    // Fourth bullet (down diagonal): Magenta
+                    ctx.fillStyle = '#ff00ff';
+                }
+            } else if (player.doubleBulletLevel > 0) {
+                // Only double bullet: Alternate colors for parallel bullets
+                const bulletIndex = this.game.bullets.indexOf(this);
+                if (bulletIndex % 2 === 0) {
+                    ctx.fillStyle = '#00ffff'; // Cyan for first bullet
+                } else {
+                    ctx.fillStyle = '#00ff88'; // Green-cyan for second bullet
+                }
+            } else if (player.tripleBulletLevel > 0) {
+                // Only triple bullet: Main bullet cyan, diagonals magenta
+                const bulletIndex = this.game.bullets.indexOf(this);
+                if (bulletIndex % 3 === 0) {
+                    ctx.fillStyle = '#00ffff'; // Cyan for main bullet
+                } else {
+                    ctx.fillStyle = '#ff00ff'; // Magenta for diagonal bullets
+                }
+            } else {
+                // No upgrades: Default cyan
+                ctx.fillStyle = '#00ffff';
+            }
+        } else {
+            ctx.fillStyle = '#00ffff'; // Default cyan
+        }
         ctx.fillRect(this.x, this.y, this.width, this.height);
     }
 }
