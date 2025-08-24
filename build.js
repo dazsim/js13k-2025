@@ -6,6 +6,8 @@ const chokidar = require('chokidar');
 const { minify } = require('html-minifier-terser');
 let zopfli; // Lazy load zopfli only when needed
 
+const args = process.argv.slice(2);
+
 // Display help if requested
 if (args.includes('--help') || args.includes('-h')) {
     console.log(`
@@ -38,7 +40,6 @@ Release mode includes:
     process.exit(0);
 }
 
-const args = process.argv.slice(2);
 const watchMode = args.includes('--watch');
 const releaseMode = args.includes('--release');
 const verboseMode = args.includes('--verbose');
