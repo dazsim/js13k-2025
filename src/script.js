@@ -178,6 +178,10 @@ class Game {
         this.enemySpawnTimer = 0;
         this.starSpawnTimer = 0;
         
+        // Controller support
+        this.controllers = [];
+        this.controllerConnected = false;
+        
         // Frame rate tracking
         this.frameCount = 0;
         this.fps = 0;
@@ -197,8 +201,26 @@ class Game {
     init() {
         this.setupStates();
         this.bindEvents();
+        this.checkExistingControllers();
         this.changeState('menu');
         this.gameLoop();
+    }
+    
+    checkExistingControllers() {
+        // Check if any controllers are already connected
+        const gamepads = navigator.getGamepads();
+        const gamepad = gamepads[0];
+        if (!gamepad) return;
+        
+        this.controllers[0] = gamepad;
+        this.controllerConnected = true;
+        
+        // Store initial button states for existing controllers too
+        this.initialButtonStates = {};
+        for (let j = 0; j < gamepad.buttons.length; j++) {
+            this.initialButtonStates[j] = gamepad.buttons[j]?.pressed || false;
+        }
+        
     }
     
     setupStates() {
@@ -211,7 +233,8 @@ class Game {
             win: new WinState(this),
             settings: new SettingsState(this),
             highscore: new HighScoreState(this),
-            shop: new ShopState(this)
+            shop: new ShopState(this),
+            controllerTest: new ControllerTestState(this)
         };
     }
     
@@ -266,9 +289,35 @@ class Game {
         document.addEventListener('keyup', (e) => {
             this.keys[e.code] = false;
         });
+        
+        // Controller support
+        window.addEventListener('gamepadconnected', (e) => {
+            console.log('Controller connected:', e.gamepad);
+            this.controllers[e.gamepad.index] = e.gamepad;
+            this.controllerConnected = true;
+            
+            // Store initial button states to detect stuck buttons
+            this.initialButtonStates = {};
+            for (let i = 0; i < e.gamepad.buttons.length; i++) {
+                this.initialButtonStates[i] = e.gamepad.buttons[i]?.pressed || false;
+            }
+            console.log('Initial button states stored:', this.initialButtonStates);
+            
+            // Dump initial controller state for debugging
+            this.dumpControllerState(e.gamepad, 'Initial state (untouched)');
+        });
+        
+        window.addEventListener('gamepaddisconnected', (e) => {
+            console.log('Controller disconnected:', e.gamepad);
+            delete this.controllers[e.gamepad.index];
+            this.controllerConnected = Object.keys(this.controllers).length > 0;
+        });
     }
     
     update(deltaTime) {
+        // Update controller input
+        this.updateControllerInput();
+        
         if (this.currentState) {
             this.currentState.update(deltaTime);
             this.currentState.handleInput(this.keys);
@@ -276,6 +325,115 @@ class Game {
         
         // Update screen shake
         this.updateScreenShake(deltaTime);
+    }
+    
+    updateControllerInput() {
+        // Get the current gamepad state (required for fresh input data)
+        const gamepads = navigator.getGamepads();
+        const controller = gamepads[0]; // Get fresh reference to first controller
+        if (!controller) return;
+        
+        // Update our stored controller reference
+        this.controllers[0] = controller;
+        
+
+        
+        // Reset ALL controller-mapped keys to false first (assume no movement/action)
+        this.keys['ControllerSpace'] = false;
+        this.keys['ControllerQ'] = false;
+        this.keys['ControllerShift'] = false;
+        this.keys['ControllerC'] = false;
+        this.keys['ControllerStart'] = false;
+        
+        // Reset movement keys to false (assume no movement)
+        this.keys['ArrowUp'] = false;
+        this.keys['ArrowDown'] = false;
+        this.keys['ArrowLeft'] = false;
+        this.keys['ArrowRight'] = false;
+        
+        // Map controller buttons to controller-specific keys
+        if (controller.buttons[0] && controller.buttons[0].pressed) { // A button
+            this.keys['ControllerSpace'] = true; // Fire laser
+            if (Math.random() < 0.1) console.log('Controller: A button pressed (Fire)');
+        }
+        
+        if (controller.buttons[1] && controller.buttons[1].pressed) { // B button
+            this.keys['ControllerQ'] = true; // Fire rocket
+            if (Math.random() < 0.1) console.log('Controller: B button pressed (Rocket)');
+            // Add haptic feedback for rocket firing
+            if (controller.vibrationActuator) {
+                controller.vibrationActuator.playEffect('dual-rumble', {
+                    startDelay: 0,
+                    duration: 200,
+                    weakMagnitude: 0.5,
+                    strongMagnitude: 0.5
+                });
+            }
+        }
+        
+        if (controller.buttons[2] && controller.buttons[2].pressed) { // X button
+            this.keys['ControllerShift'] = true; // Turbo
+        }
+        
+        if (controller.buttons[3] && controller.buttons[3].pressed) { // Y button
+            this.keys['ControllerC'] = true; // Cloak
+        }
+        
+        // Start button for pause/menu
+        if (controller.buttons[9] && controller.buttons[9].pressed) { // Start button
+            if (!this.keys['StartPressed']) { // Prevent multiple triggers
+                this.keys['StartPressed'] = true;
+                if (this.currentState === this.states.gameplay) {
+                    this.changeState('pause');
+                } else if (this.currentState === this.states.pause) {
+                    this.changeState('gameplay');
+                }
+            }
+        } else {
+            this.keys['StartPressed'] = false;
+        }
+        
+        // D-pad and analog stick movement
+        const leftStickX = controller.axes[0];
+        const leftStickY = controller.axes[1];
+        
+        // Map analog stick to movement (with deadzone) - map to actual arrow keys
+        const deadzone = 0.1;
+        if (Math.abs(leftStickX) > deadzone) {
+            if (leftStickX > 0) {
+                this.keys['ArrowRight'] = true;
+                if (Math.random() < 0.1) console.log('Controller: Right movement detected');
+            } else {
+                this.keys['ArrowLeft'] = true;
+                if (Math.random() < 0.1) console.log('Controller: Left movement detected');
+            }
+        }
+        
+        if (Math.abs(leftStickY) > deadzone) {
+            if (leftStickY > 0) {
+                this.keys['ArrowDown'] = true;
+                console.log('Controller: Down movement detected, ArrowDown set to true');
+            } else {
+                this.keys['ArrowUp'] = true;
+                console.log('Controller: Up movement detected, ArrowUp set to true');
+            }
+        }
+        
+        // D-pad support (alternative movement) - map to actual arrow keys
+        // Filter out stuck buttons by checking if they were pressed in initial state
+        
+        if (controller.buttons[12] && controller.buttons[12].pressed) { // D-pad up
+            this.keys['ArrowUp'] = true;
+        }
+        if (controller.buttons[13] && controller.buttons[13].pressed) { // D-pad down
+            this.keys['ArrowDown'] = true;
+        }
+        if (controller.buttons[14] && controller.buttons[14].pressed) { // D-pad left
+            this.keys['ArrowLeft'] = true;
+        }
+        if (controller.buttons[15] && controller.buttons[15].pressed) { // D-pad right
+            this.keys['ArrowRight'] = true;
+        }
     }
     
     triggerScreenShake(intensity = 100, duration = 400) {
@@ -450,6 +608,11 @@ class MenuState extends GameState {
         this.keyCooldown = 0;
         this.cooldownTime = 200; // 0.2 seconds in milliseconds
         this.enterCooldown = 0; // Will be set in enter() method
+        
+        // Add controller test option if controller is connected
+        if (this.game.controllerConnected) {
+            this.options.push('Controller Test');
+        }
     }
     
     enter() {
@@ -472,6 +635,7 @@ class MenuState extends GameState {
     }
     
     handleInput(keys) {
+        // Keyboard navigation
         if (keys['ArrowUp'] && this.keyCooldown <= 0) {
             this.selectedOption = (this.selectedOption - 1 + this.options.length) % this.options.length;
             this.keyCooldown = this.cooldownTime;
@@ -481,6 +645,11 @@ class MenuState extends GameState {
             this.keyCooldown = this.cooldownTime;
         }
         if ((keys['Enter'] || keys['Space']) && this.enterCooldown <= 0) {
+            this.selectOption();
+        }
+        
+        // Controller navigation (now using standard arrow keys)
+        if ((keys['Enter'] || keys['Space'] || keys['ControllerSpace']) && this.enterCooldown <= 0) {
             this.selectOption();
         }
     }
@@ -495,6 +664,11 @@ class MenuState extends GameState {
                 break;
             case 2: // High Score
                 this.game.changeState('highscore');
+                break;
+            case 3: // Controller Test (only available when controller connected)
+                if (this.game.controllerConnected) {
+                    this.game.changeState('controllerTest');
+                }
                 break;
         }
     }
@@ -1277,6 +1451,28 @@ class GameplayState extends GameState {
         // Draw FPS below metal count
         ctx.fillText(`FPS: ${this.game.fps}`, 20, 150);
         
+        // Draw controller status
+        if (this.game.controllerConnected) {
+            ctx.fillStyle = '#00ff00';
+            ctx.fillText('Controller Connected', 20, 180);
+            
+            // Draw controller controls
+            ctx.fillStyle = '#888';
+            ctx.font = '14px monospace';
+            ctx.fillText('Controls: A=Fire, B=Rocket, X=Turbo, Start=Pause', 20, 200);
+            
+            // Debug: Show controller input values
+            const controller = this.game.controllers[0];
+            if (controller) {
+                ctx.fillStyle = '#ffff00';
+                ctx.font = '12px monospace';
+                ctx.fillText(`Stick: ${controller.axes[0]?.toFixed(2)}, ${controller.axes[1]?.toFixed(2)}`, 20, 220);
+                ctx.fillText(`A:${controller.buttons[0]?.pressed} B:${controller.buttons[1]?.pressed} X:${controller.buttons[2]?.pressed} Y:${controller.buttons[3]?.pressed}`, 20, 235);
+                ctx.fillText(`Arrow Keys: Up:${this.game.keys['ArrowUp']} Down:${this.game.keys['ArrowDown']} Left:${this.game.keys['ArrowLeft']} Right:${this.game.keys['ArrowRight']}`, 20, 250);
+                ctx.fillText(`Actions: Fire:${this.game.keys['ControllerSpace']} Rocket:${this.game.keys['ControllerQ']} Turbo:${this.game.keys['ControllerShift']}`, 20, 265);
+            }
+        }
+        
         // Draw cloaking bar
         this.renderCloakingBar(ctx);
         
@@ -1562,6 +1758,14 @@ class PauseState extends GameState {
         if (keys['KeyM']) {
             this.game.changeState('menu'); // Go directly to main menu
         }
+        
+        // Controller support - Start button to resume, Y button to menu
+        if (keys['StartPressed']) {
+            this.game.changeState('gameplay');
+        }
+        if (keys['KeyY'] || keys['ControllerC']) {
+            this.game.changeState('menu');
+        }
     }
 }
 
@@ -1610,6 +1814,14 @@ class GameOverState extends GameState {
         }
         if (keys['KeyM']) {
             this.game.goBack(); // This will go back to main menu
+        }
+        
+        // Controller support - A button to restart, Y button to menu
+        if (keys['KeyA'] || keys['ControllerSpace']) {
+            this.game.changeState('gameplay');
+        }
+        if (keys['KeyY'] || keys['ControllerC']) {
+            this.game.goBack();
         }
     }
 }
@@ -1670,6 +1882,20 @@ class WinState extends GameState {
             this.game.changeState('gameplay');
         }
         if (keys['KeyM']) {
+            this.game.changeState('menu');
+        }
+        
+        // Controller support - A button to restart, Y button to menu
+        if (keys['KeyA'] || keys['ControllerSpace']) {
+            // Reset game and start over
+            this.game.gameData.level = 1;
+            this.game.gameData.lives = 3;
+            this.game.gameData.score = 0;
+            this.game.gameData.metal = 0;
+            this.game.gameData.shopVisited = false;
+            this.game.changeState('gameplay');
+        }
+        if (keys['KeyY'] || keys['ControllerC']) {
             this.game.changeState('menu');
         }
     }
@@ -2149,7 +2375,7 @@ class Player {
             currentSpeed *= 2; // Double speed with turbo
         }
         
-        // Horizontal movement (left/right)
+        // Horizontal movement (left/right) - Keyboard + Controller
         if (keys['ArrowLeft'] || keys['KeyA']) {
             this.x -= currentSpeed * deltaTime / 1000;
         }
@@ -2157,7 +2383,7 @@ class Player {
             this.x += currentSpeed * deltaTime / 1000;
         }
         
-        // Vertical movement (up/down)
+        // Vertical movement (up/down) - Keyboard + Controller
         if (keys['ArrowUp'] || keys['KeyW']) {
             this.y -= currentSpeed * deltaTime / 1000;
         }
@@ -2175,22 +2401,22 @@ class Player {
         // Keep player within horizontal boundaries (left and right edges)
         this.x = Math.max(0, Math.min(this.game.width - this.width, this.x));
         
-        // Shooting - uses Space key
+        // Shooting - uses Space key or Controller A button
         this.shootCooldown -= deltaTime;
-        if (keys['Space'] && this.shootCooldown <= 0) {
+        if ((keys['Space'] || keys['ControllerSpace']) && this.shootCooldown <= 0) {
             this.shoot();
             this.shootCooldown = this.shootDelay;
             // Decloak immediately when shooting
             this.decloak();
         }
         
-        // Secondary weapon (Q key)
-        if (keys['KeyQ'] && this.secondaryWeaponLevel > 0) {
+        // Secondary weapon (Q key or Controller B button)
+        if ((keys['KeyQ'] || keys['ControllerQ']) && this.secondaryWeaponLevel > 0) {
             this.fireSecondaryWeapon();
         }
         
-        // Turbo activation
-        if (keys['ShiftLeft'] || keys['ShiftRight']) {
+        // Turbo activation (Shift key or Controller X button)
+        if (keys['ShiftLeft'] || keys['ShiftRight'] || keys['ControllerShift']) {
             if (this.turboLevel > 0 && this.turboCharge > 0) {
                 this.turboActive = true;
             }
@@ -2326,6 +2552,9 @@ class Player {
         // Play hit sound effect
         audioManager.playSound(hitSound);
         
+        // Trigger controller vibration for damage feedback
+        this.triggerControllerVibration();
+        
         this.isHit = true;
         this.hitTimer = 0;
         this.blinkTimer = 0;
@@ -2333,6 +2562,38 @@ class Player {
         
         // Create hit sparks
         this.createHitSparks();
+    }
+    
+    triggerControllerVibration() {
+        // Trigger vibration on all connected controllers
+        if (this.game.controllers && this.game.controllers.length > 0) {
+            this.game.controllers.forEach(controller => {
+                if (controller && controller.vibrationActuator) {
+                    controller.vibrationActuator.playEffect('dual-rumble', {
+                        startDelay: 0,
+                        duration: 300,
+                        weakMagnitude: 0.8,
+                        strongMagnitude: 0.8
+                    });
+                }
+            });
+        }
+    }
+    
+    triggerRocketVibration() {
+        // Trigger vibration for rocket firing
+        if (this.game.controllers && this.game.controllers.length > 0) {
+            this.game.controllers.forEach(controller => {
+                if (controller && controller.vibrationActuator) {
+                    controller.vibrationActuator.playEffect('dual-rumble', {
+                        startDelay: 0,
+                        duration: 200,
+                        weakMagnitude: 0.5,
+                        strongMagnitude: 0.5
+                    });
+                }
+            });
+        }
     }
     
     createHitSparks() {
@@ -2394,6 +2655,9 @@ class Player {
             
             // Decloak when firing rockets
             this.decloak();
+            
+            // Trigger controller vibration for rocket firing
+            this.triggerRocketVibration();
             
             this.game.bullets.push(new Rocket(this.x + this.width / 2, this.y + this.height / 2, this.game));
             this.rocketCooldown = this.rocketCooldownTime;
@@ -3117,6 +3381,20 @@ class RatBoss extends Enemy {
         this.phase = 'defeated';
         this.isVulnerable = false;
         
+        // Trigger massive controller vibration for boss defeat
+        if (this.game.controllers && this.game.controllers.length > 0) {
+            this.game.controllers.forEach(controller => {
+                if (controller && controller.vibrationActuator) {
+                    controller.vibrationActuator.playEffect('dual-rumble', {
+                        startDelay: 0,
+                        duration: 1000,
+                        weakMagnitude: 1.0,
+                        strongMagnitude: 1.0
+                    });
+                }
+            });
+        }
+        
         // Create massive explosion
         for (let i = 0; i < 50; i++) {
             const angle = Math.random() * 360;
@@ -3751,9 +4029,128 @@ class Metal {
     }
 }
 
+// Controller Test State
+class ControllerTestState extends GameState {
+    constructor(game) {
+        super(game);
+        this.testTimer = 0;
+        this.testDuration = 5000; // 5 seconds
+    }
+    
+    enter() {
+        this.testTimer = 0;
+    }
+    
+    update(deltaTime) {
+        this.testTimer += deltaTime;
+        
+        // Auto-return to menu after test duration
+        if (this.testTimer >= this.testDuration) {
+            this.game.changeState('menu');
+        }
+    }
+    
+    handleInput(keys) {
+        // Return to menu with any key or controller button
+        if (keys['Escape'] || keys['StartPressed'] || keys['KeyA'] || keys['KeyB'] || keys['KeyX'] || keys['KeyY']) {
+            this.game.changeState('menu');
+        }
+    }
+    
+    render(ctx) {
+        // Clear canvas
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, this.game.width, this.game.height);
+        
+        // Draw stars background
+        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
+        
+        // Draw title
+        ctx.fillStyle = '#fff';
+        ctx.font = '48px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('Controller Test', this.game.width / 2, 150);
+        
+        // Draw controller status
+        if (this.game.controllerConnected) {
+            ctx.fillStyle = '#00ff00';
+            ctx.font = '24px monospace';
+            ctx.fillText('Controller Connected!', this.game.width / 2, 220);
+            
+            // Draw controller info
+            const controller = this.game.controllers[0];
+            if (controller) {
+                ctx.fillStyle = '#fff';
+                ctx.font = '18px monospace';
+                ctx.fillText(`Controller: ${controller.id}`, this.game.width / 2, 260);
+                ctx.fillText(`Buttons: ${controller.buttons.length}`, this.game.width / 2, 290);
+                ctx.fillText(`Axes: ${controller.axes.length}`, this.game.width / 2, 320);
+            }
+            
+            // Draw test instructions
+            ctx.fillStyle = '#888';
+            ctx.font = '16px monospace';
+            ctx.fillText('Press any button or move analog sticks to test', this.game.width / 2, 380);
+            ctx.fillText('Test will auto-return to menu in 5 seconds', this.game.width / 2, 410);
+        } else {
+            ctx.fillStyle = '#ff0000';
+            ctx.font = '24px monospace';
+            ctx.fillText('No Controller Connected', this.game.width / 2, 220);
+        }
+        
+        // Draw return instruction
+        ctx.fillStyle = '#888';
+        ctx.font = '16px monospace';
+        ctx.fillText('Press any key or button to return to menu', this.game.width / 2, 500);
+    }
+}
+
 // Start the game when the page loads
 let game;
 window.addEventListener('load', () => {
     game = new Game();
+    
+    // Expose controller debug functions to global scope for console access
+    window.dumpController = () => {
+        if (game) {
+            game.dumpCurrentControllerState();
+        } else {
+            console.log('Game not initialized yet');
+        }
+    };
+    
+    window.dumpControllerRaw = () => {
+        if (game && game.controllers && game.controllers.length > 0) {
+            const controller = game.controllers[0];
+            console.log('Raw controller object:', controller);
+            console.log('All axes:', controller.axes);
+            console.log('All buttons:', controller.buttons);
+        } else {
+            console.log('No controller connected');
+        }
+    };
+    
+    window.dumpKeys = () => {
+        if (game) {
+            console.log('Current keys state:', {
+                ArrowUp: game.keys['ArrowUp'],
+                ArrowDown: game.keys['ArrowDown'],
+                ArrowLeft: game.keys['ArrowLeft'],
+                ArrowRight: game.keys['ArrowRight'],
+                ControllerSpace: game.keys['ControllerSpace'],
+                ControllerQ: game.keys['ControllerQ']
+            });
+        } else {
+            console.log('Game not initialized yet');
+        }
+    };
+    
+    window.dumpInitialButtonStates = () => {
+        if (game) {
+            console.log('Initial button states:', game.initialButtonStates);
+        } else {
+            console.log('Game not initialized yet');
+        }
+    };
 });
 
