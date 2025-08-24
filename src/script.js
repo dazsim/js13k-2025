@@ -31,6 +31,102 @@ class GameState {
     }
 }
 
+  class AudioManager {
+    constructor() {
+        this.context = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Minimal zzfx generator for compact sound effects
+    zzfx(...p) {
+        let S = Math,
+            R = 44100,
+            x = S.PI * 2,
+            t = p[2] * (1 + p[1] * (2 * S.random() - 1)),
+            e = p[3] * R,
+            a = p[4] * R,
+            n = p[5] * R,
+            i = p[6],
+            o = [],
+            A = 0;
+
+        for (let c = 0; c < e + a + n; c++) {
+            let s = c < e ? c / e : c < e + a ? 1 - (c - e) / a : 0;
+            A += t * S.cos(i * c / R);
+            o[c] = s * S.sin(A / R * x);
+            t += p[7];
+        }
+
+        const B = this.context.createBuffer(1, o.length, R);
+        B.getChannelData(0).set(o);
+        const source = this.context.createBufferSource();
+        source.buffer = B;
+        source.connect(this.context.destination);
+        source.start();
+    }
+
+    // Converts SFXR-like JSON to zzfx params
+    playSound(params) {
+        const soundParams = [
+            params.sound_vol || 0.5,          // Volume
+            0,                                // Randomness
+            (params.p_base_freq || 0.5) * 2000, // Base frequency
+            params.p_env_attack || 0.01,      // Attack
+            params.p_env_sustain || 0.1,      // Sustain
+            params.p_env_decay || 0.2,        // Decay
+            0,                                // Phase offset
+            params.p_freq_ramp || 0           // Frequency ramp
+        ];
+        this.zzfx(...soundParams);
+    }
+}
+
+const audioManager = new AudioManager();
+
+const laserSound = {
+    "p_env_attack": 0,
+    "p_env_sustain": 0.15,
+    "p_env_decay": 0.3,
+    "p_base_freq": 0.82,
+    "p_freq_ramp": -0.29,
+    "sound_vol": 0.25
+};
+
+const rocketSound = {
+    "p_env_attack": 0.1,
+    "p_env_sustain": 0.2,
+    "p_env_decay": 0.4,
+    "p_base_freq": 0.3,
+    "p_freq_ramp": -0.15,
+    "sound_vol": 0.3
+};
+
+const hitSound = {
+    "p_env_attack": 0,
+    "p_env_sustain": 0.1,
+    "p_env_decay": 0.2,
+    "p_base_freq": 0.2,
+    "p_freq_ramp": -0.5,
+    "sound_vol": 0.4
+};
+
+const metalCollectSound = {
+    "p_env_attack": 0,
+    "p_env_sustain": 0.05,
+    "p_env_decay": 0.1,
+    "p_base_freq": 0.8,
+    "p_freq_ramp": 0.2,
+    "sound_vol": 0.3
+};
+
+const enemyDestroySound = {
+    "p_env_attack": 0,
+    "p_env_sustain": 0.1,
+    "p_env_decay": 0.3,
+    "p_base_freq": 0.4,
+    "p_freq_ramp": -0.3,
+    "sound_vol": 0.35
+};
+
 // Static utility functions for common rendering tasks
 class RenderUtils {
     static drawStars(ctx, width, height, count = 100) {
@@ -888,6 +984,9 @@ class GameplayState extends GameState {
                         this.game.enemies.splice(enemyIndex, 1);
                         this.game.gameData.score += 100;
                         
+                        // Play enemy destruction sound
+                        audioManager.playSound(enemyDestroySound);
+                        
                         // Create rocket explosion (bigger than normal bullet)
                         this.createRocketExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                         
@@ -902,6 +1001,10 @@ class GameplayState extends GameState {
                     this.game.bullets.splice(bulletIndex, 1);
                     this.game.enemies.splice(enemyIndex, 1);
                     this.game.gameData.score += 100;
+                    
+                    // Play enemy destruction sound
+                    audioManager.playSound(enemyDestroySound);
+                    
                     this.createExplosion(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
                     
                     // Create metal drop (mice drop 3, others drop 1)
@@ -2220,6 +2323,9 @@ class Player {
     }
     
     hit() {
+        // Play hit sound effect
+        audioManager.playSound(hitSound);
+        
         this.isHit = true;
         this.hitTimer = 0;
         this.blinkTimer = 0;
@@ -2241,6 +2347,9 @@ class Player {
     }
     
     shoot() {
+        // Play laser sound effect
+        audioManager.playSound(laserSound);
+        
         // Base bullet positioning
         const centerY = this.y + this.height / 2;
         const bulletSpacing = 4;
@@ -2280,6 +2389,12 @@ class Player {
     
     fireSecondaryWeapon() {
         if (this.secondaryWeaponLevel > 0 && this.rocketCooldown <= 0) {
+            // Play rocket sound effect
+            audioManager.playSound(rocketSound);
+            
+            // Decloak when firing rockets
+            this.decloak();
+            
             this.game.bullets.push(new Rocket(this.x + this.width / 2, this.y + this.height / 2, this.game));
             this.rocketCooldown = this.rocketCooldownTime;
             console.log('Rocket fired! Cooldown active for', (this.rocketCooldownTime / 1000).toFixed(1), 'seconds');
@@ -3617,7 +3732,8 @@ class Metal {
         if (!this.collected) {
             this.collected = true;
             this.game.gameData.metal++;
-            // Could add collection sound or effect here
+            // Play metal collection sound effect
+            audioManager.playSound(metalCollectSound);
         }
     }
     
