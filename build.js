@@ -6,11 +6,44 @@ const chokidar = require('chokidar');
 const { minify } = require('html-minifier-terser');
 let zopfli; // Lazy load zopfli only when needed
 
+// Display help if requested
+if (args.includes('--help') || args.includes('-h')) {
+    console.log(`
+🚀 JS13K Build Script
+
+Usage: node build.js [options]
+
+Options:
+  --watch              Watch for file changes and rebuild automatically
+  --release            Enable release mode optimizations (minification, inlining, console stripping)
+  --verbose            Enable detailed logging
+  --zopfli            Use Zopfli compression for maximum file size reduction
+  --strip-console     Strip console.log statements (also enabled in --release mode)
+  --project=NAME      Set project name for output files (default: mygame)
+  --help, -h          Show this help message
+
+Examples:
+  node build.js                    # Normal build
+  node build.js --release          # Release build with all optimizations
+  node build.js --watch            # Watch mode for development
+  node build.js --zopfli          # Maximum compression build
+  node build.js --strip-console   # Strip console statements without release mode
+
+Release mode includes:
+  • Minification of JS/CSS/HTML
+  • Inlining of assets into HTML
+  • Console statement stripping
+  • Maximum compression
+`);
+    process.exit(0);
+}
+
 const args = process.argv.slice(2);
 const watchMode = args.includes('--watch');
 const releaseMode = args.includes('--release');
 const verboseMode = args.includes('--verbose');
 const useZopfli = args.includes('--zopfli');
+const stripConsole = args.includes('--strip-console') || releaseMode; // Always strip in release mode
 
 let projectName = 'mygame';
 const projectArg = args.find(arg => arg.startsWith('--project='));
@@ -52,6 +85,48 @@ function log(message, level = 'info') {
 
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function stripConsoleStatements(content) {
+    const originalLength = content.length;
+    let removedCount = 0;
+    
+    // Remove console.log, console.warn, console.error, console.info, console.debug statements
+    // Handle various formats: console.log('text'); console.log('text') ; console.log('text')
+    
+    // Pattern 1: console.method('content'); with optional semicolon and whitespace
+    const before1 = content.length;
+    content = content.replace(/console\.(log|warn|error|info|debug)\s*\([^)]*\);?\s*/g, '');
+    removedCount += before1 - content.length;
+    
+    // Pattern 2: console.method('content') ; (semicolon on separate line)
+    const before2 = content.length;
+    content = content.replace(/console\.(log|warn|error|info|debug)\s*\([^)]*\)\s*;?\s*/g, '');
+    removedCount += before2 - content.length;
+    
+    // Pattern 3: Multi-line console statements (rare but possible)
+    const before3 = content.length;
+    content = content.replace(/console\.(log|warn|error|info|debug)\s*\([\s\S]*?\);?\s*/g, '');
+    removedCount += before3 - content.length;
+    
+    // Pattern 4: Console statements with template literals or complex arguments
+    const before4 = content.length;
+    content = content.replace(/console\.(log|warn|error|info|debug)\s*\([^;]*\);?\s*/g, '');
+    removedCount += before4 - content.length;
+    
+    // Remove empty lines that might be left behind
+    content = content.replace(/^\s*[\r\n]/gm, '');
+    
+    // Remove multiple consecutive empty lines
+    content = content.replace(/\n\s*\n\s*\n/g, '\n\n');
+    
+    return {
+        content,
+        originalLength,
+        finalLength: content.length,
+        bytesRemoved: originalLength - content.length,
+        statementsRemoved: removedCount
+    };
 }
 
 async function getAllFiles(dir) {
@@ -489,6 +564,37 @@ async function build() {
             const htmlFiles = (await fs.readdir(targetDir)).filter(f => f.endsWith('.html'));
             const jsFiles = (await fs.readdir(targetDir)).filter(f => f.endsWith('.js'));
             const cssFiles = (await fs.readdir(targetDir)).filter(f => f.endsWith('.css'));
+            
+            // Strip console.log statements from JS files in release mode or when --strip-console is specified
+            if (stripConsole) {
+                log('🧹 Stripping console.log statements...', 'info');
+                let totalBytesRemoved = 0;
+                let totalStatementsRemoved = 0;
+                
+                await Promise.all(jsFiles.map(async (jsFile) => {
+                    const jsPath = path.join(targetDir, jsFile);
+                    let jsContent = await fs.readFile(jsPath, 'utf8');
+                    
+                    // Strip all console statements using the dedicated function
+                    const result = stripConsoleStatements(jsContent);
+                    jsContent = result.content;
+                    
+                    await fs.writeFile(jsPath, jsContent, 'utf8');
+                    
+                    totalBytesRemoved += result.bytesRemoved;
+                    totalStatementsRemoved += result.statementsRemoved;
+                    
+                    if (result.statementsRemoved > 0) {
+                        log(`✅ Stripped ${result.statementsRemoved} console statements from ${jsFile} (${result.bytesRemoved} bytes)`, 'info');
+                    } else {
+                        log(`✅ No console statements found in ${jsFile}`, 'info');
+                    }
+                }));
+                
+                if (totalStatementsRemoved > 0) {
+                    log(`🎯 Total console statements removed: ${totalStatementsRemoved} (${totalBytesRemoved} bytes saved)`, 'info');
+                }
+            }
             
             // Process HTML files in parallel
             await Promise.all(htmlFiles.map(async (htmlFile) => {

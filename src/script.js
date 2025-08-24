@@ -31,6 +31,19 @@ class GameState {
     }
 }
 
+// Static utility functions for common rendering tasks
+class RenderUtils {
+    static drawStars(ctx, width, height, count = 100) {
+        // Simple star field for menu/background
+        for (let i = 0; i < count; i++) {
+            const x = (i * 37) % width;
+            const y = (i * 73) % height;
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(x, y, 1, 1);
+        }
+    }
+}
+
 // Main Game class with state management
 class Game {
     constructor() {
@@ -339,7 +352,7 @@ class MenuState extends GameState {
         this.selectedOption = 0;
         this.options = ['Play Game', 'Settings', 'High Score'];
         this.keyCooldown = 0;
-        this.cooldownTime = 200; // 0.1 seconds in milliseconds
+        this.cooldownTime = 200; // 0.2 seconds in milliseconds
         this.enterCooldown = 0; // Will be set in enter() method
     }
     
@@ -399,7 +412,7 @@ class MenuState extends GameState {
         this.game.drawMilkyWay(ctx);
         
         // Draw stars background
-        this.drawStars(ctx);
+        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
         
         // Draw title
         ctx.fillStyle = '#fff';
@@ -428,19 +441,6 @@ class MenuState extends GameState {
         ctx.font = '16px monospace';
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
     }
-    
-    drawStars(ctx) {
-        // Simple star field for menu
-        for (let i = 0; i < 100; i++) {
-            const x = (i * 37) % this.game.width;
-            const y = (i * 73) % this.game.height;
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(x, y, 1, 1);
-        }
-    }
-    
-
-
 }
 
 // Gameplay State (contains the original game logic)
@@ -1606,7 +1606,7 @@ class SettingsState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw stars background
-        this.drawStars(ctx);
+        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
         
         // Draw title
         ctx.fillStyle = '#fff';
@@ -1634,16 +1634,6 @@ class SettingsState extends GameState {
         ctx.fillStyle = '#888';
         ctx.font = '16px monospace';
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
-    }
-    
-    drawStars(ctx) {
-        // Simple star field for menu
-        for (let i = 0; i < 100; i++) {
-            const x = (i * 37) % this.game.width;
-            const y = (i * 73) % this.game.height;
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(x, y, 1, 1);
-        }
     }
     
     handleInput(keys) {
@@ -1836,7 +1826,7 @@ class HighScoreState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw stars background
-        this.drawStars(ctx);
+        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
         
         // Draw title
         ctx.fillStyle = '#fff';
@@ -1869,16 +1859,6 @@ class HighScoreState extends GameState {
         ctx.fillStyle = '#888';
         ctx.font = '16px monospace';
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
-    }
-    
-    drawStars(ctx) {
-        // Simple star field for menu
-        for (let i = 0; i < 100; i++) {
-            const x = (i * 37) % this.game.width;
-            const y = (i * 73) % this.game.height;
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(x, y, 1, 1);
-        }
     }
     
     handleInput(keys) {
@@ -1978,6 +1958,34 @@ class HighScoreState extends GameState {
 }
 
 // Game Classes (Player, Enemy, Bullet, Star, Particle)
+
+// Base Particle class - must be defined before classes that extend it
+class Particle {
+    constructor(x, y, angle, speed = 2, size = 3, decay = 0.02, color = '#ffaa00') {
+        this.x = x;
+        this.y = y;
+        this.vx = Math.cos(angle * Math.PI / 180) * speed;
+        this.vy = Math.sin(angle * Math.PI / 180) * speed;
+        this.life = 1;
+        this.decay = decay;
+        this.size = size;
+        this.color = color;
+    }
+    
+    update(deltaTime) {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life -= this.decay;
+    }
+    
+    render(ctx) {
+        ctx.globalAlpha = this.life;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.globalAlpha = 1;
+    }
+}
+
 class Player {
     constructor(x, y, game) {
         this.x = x;
@@ -3160,53 +3168,29 @@ class BossExplosion {
     }
 }
 
-class DamageParticle {
-    constructor(x, y, angle, speed) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 2) * speed;
-        this.vy = Math.sin(angle * Math.PI / 2) * speed;
-        this.life = 1;
-        this.decay = 0.05;
-        this.size = Math.random() * 3 + 2;
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
+class DamageParticle extends Particle {
+    constructor(x, y, angle, speed = 3) {
+        const size = Math.random() * 3 + 2;
+        super(x, y, angle, speed, size, 0.05, '#ff0000');
     }
     
     render(ctx) {
         ctx.globalAlpha = this.life;
-        ctx.fillStyle = '#ff0000';
+        ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.size, this.size);
         ctx.fillRect(this.x + 2, this.y + 2, this.size - 4, this.size - 4);
         ctx.globalAlpha = 1;
     }
 }
 
-class BeamDamageParticle {
-    constructor(x, y, angle, speed) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 180) * speed;
-        this.vy = Math.sin(angle * Math.PI / 180) * speed;
-        this.life = 1;
-        this.decay = 0.08;
-        this.size = Math.random() * 4 + 3;
-        this.color = '#ffff00'; // Yellow like the beam
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
+class BeamDamageParticle extends Particle {
+    constructor(x, y, angle, speed = 4) {
+        const size = Math.random() * 4 + 3;
+        super(x, y, angle, speed, size, 0.08, '#ffff00'); // Yellow like the beam
     }
     
     render(ctx) {
         ctx.globalAlpha = this.life;
-        ctx.fillStyle = this.color;
         ctx.fillStyle = this.color;
         ctx.fillRect(this.x, this.y, this.size, this.size);
         
@@ -3220,22 +3204,11 @@ class BeamDamageParticle {
     }
 }
 
-class RocketExplosionParticle {
-    constructor(x, y, angle, speed) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 180) * speed;
-        this.vy = Math.sin(angle * Math.PI / 180) * speed;
-        this.life = 1;
-        this.decay = 0.06;
-        this.size = Math.random() * 5 + 4;
-        this.color = ['#ff6600', '#ff0000', '#ffff00', '#ff8800'][Math.floor(Math.random() * 4)];
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
+class RocketExplosionParticle extends Particle {
+    constructor(x, y, angle, speed = 5) {
+        const size = Math.random() * 5 + 4;
+        const color = ['#ff6600', '#ff0000', '#ffff00', '#ff8800'][Math.floor(Math.random() * 4)];
+        super(x, y, angle, speed, size, 0.06, color);
     }
     
     render(ctx) {
@@ -3392,28 +3365,10 @@ class ProximityBomb {
     }
 }
 
-class ExplosionParticle {
-    constructor(x, y, angle, speed) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 180) * speed;
-        this.vy = Math.sin(angle * Math.PI / 180) * speed;
-        this.life = 1;
-        this.decay = 0.05;
-        this.size = Math.random() * 4 + 2;
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-    }
-    
-    render(ctx) {
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = '#ff6600';
-        ctx.fillRect(this.x, this.y, this.size, this.size);
-        ctx.globalAlpha = 1;
+class ExplosionParticle extends Particle {
+    constructor(x, y, angle, speed = 4) {
+        const size = Math.random() * 4 + 2;
+        super(x, y, angle, speed, size, 0.05, '#ff6600');
     }
 }
 
@@ -3434,46 +3389,9 @@ class Bullet {
     }
     
     render(ctx) {
-        // Color coding for different bullet types
-        if (this.game && this.game.player) {
-            const player = this.game.player;
-            
-            if (player.doubleBulletLevel > 0 && player.tripleBulletLevel > 0) {
-                // Both upgrades: Color code all bullets
-                const bulletIndex = this.game.bullets.indexOf(this);
-                if (bulletIndex % 4 === 0 || bulletIndex % 4 === 1) {
-                    // First two bullets (parallel middle): Cyan
-                    ctx.fillStyle = '#00ffff';
-                } else if (bulletIndex % 4 === 2) {
-                    // Third bullet (up diagonal): Magenta
-                    ctx.fillStyle = '#ff00ff';
-                } else {
-                    // Fourth bullet (down diagonal): Magenta
-                    ctx.fillStyle = '#ff00ff';
-                }
-            } else if (player.doubleBulletLevel > 0) {
-                // Only double bullet: Alternate colors for parallel bullets
-                const bulletIndex = this.game.bullets.indexOf(this);
-                if (bulletIndex % 2 === 0) {
-                    ctx.fillStyle = '#00ffff'; // Cyan for first bullet
-                } else {
-                    ctx.fillStyle = '#00ff88'; // Green-cyan for second bullet
-                }
-            } else if (player.tripleBulletLevel > 0) {
-                // Only triple bullet: Main bullet cyan, diagonals magenta
-                const bulletIndex = this.game.bullets.indexOf(this);
-                if (bulletIndex % 3 === 0) {
-                    ctx.fillStyle = '#00ffff'; // Cyan for main bullet
-                } else {
-                    ctx.fillStyle = '#ff00ff'; // Magenta for diagonal bullets
-                }
-            } else {
-                // No upgrades: Default cyan
-                ctx.fillStyle = '#00ffff';
-            }
-        } else {
-            ctx.fillStyle = '#00ffff'; // Default cyan
-        }
+        
+        ctx.fillStyle = '#ffff00'; // Yellow
+        
         ctx.fillRect(this.x, this.y, this.width, this.height);
     }
 }
@@ -3610,28 +3528,12 @@ class Rocket extends Bullet {
     }
 }
 
-class SmokeParticle {
+class SmokeParticle extends Particle {
     constructor(x, y) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.random() * 2 - 1;
-        this.vy = Math.random() * 2 - 1;
-        this.life = 1;
-        this.decay = 0.02;
-        this.size = Math.random() * 3 + 2;
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-    }
-    
-    render(ctx) {
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = '#666666';
-        ctx.fillRect(this.x, this.y, this.size, this.size);
-        ctx.globalAlpha = 1;
+        // Smoke particles use random direction instead of angle
+        const randomAngle = Math.random() * 360;
+        const size = Math.random() * 3 + 2;
+        super(x, y, randomAngle, 1, size, 0.02, '#666666');
     }
 }
 
@@ -3660,77 +3562,17 @@ class Star {
     }
 }
 
-class Particle {
-    constructor(x, y, angle) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 180) * 2;
-        this.vy = Math.sin(angle * Math.PI / 180) * 2;
-        this.life = 1;
-        this.decay = 0.02;
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-    }
-    
-    render(ctx) {
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = '#ffaa00';
-        ctx.fillRect(this.x, this.y, 3, 3);
-        ctx.globalAlpha = 1;
+class HitSpark extends Particle {
+    constructor(x, y, angle, speed = 4) {
+        const size = Math.random() * 3 + 2; // Bigger than regular particles
+        super(x, y, angle, speed, size, 0.03, '#ffff00'); // Yellow sparks
     }
 }
 
-class HitSpark {
-    constructor(x, y, angle, speed) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 180) * speed;
-        this.vy = Math.sin(angle * Math.PI / 180) * speed;
-        this.life = 1;
-        this.decay = 0.03;
-        this.size = Math.random() * 3 + 2; // Bigger than regular particles
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-    }
-    
-    render(ctx) {
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = '#ffff00'; // Yellow sparks
-        ctx.fillRect(this.x, this.y, this.size, this.size);
-        ctx.globalAlpha = 1;
-    }
-}
-
-class AsteroidExplosion {
+class AsteroidExplosion extends Particle {
     constructor(x, y, angle) {
-        this.x = x;
-        this.y = y;
-        this.vx = Math.cos(angle * Math.PI / 180) * 3; // Faster than regular particles
-        this.vy = Math.sin(angle * Math.PI / 180) * 3;
-        this.life = 1;
-        this.decay = 0.015; // Slower decay for longer-lasting effect
-        this.size = Math.random() * 4 + 3; // Bigger than regular particles
-    }
-    
-    update(deltaTime) {
-        this.x += this.vx;
-        this.y += this.vy;
-        this.life -= this.decay;
-    }
-    
-    render(ctx) {
-        ctx.globalAlpha = this.life;
-        ctx.fillStyle = '#ffff00'; // Yellow explosion particles
-        ctx.fillRect(this.x, this.y, this.size, this.size);
-        ctx.globalAlpha = 1;
+        const size = Math.random() * 4 + 3; // Bigger than regular particles
+        super(x, y, angle, 3, size, 0.015, '#ffff00'); // Faster speed, slower decay, yellow color
     }
 }
 
@@ -3789,18 +3631,9 @@ class Metal {
         ctx.fillStyle = '#c0c0c0'; // Silver base
         ctx.fillRect(this.x, floatY, this.width, this.height);
         
-        // Add shine effect
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(this.x + 1, floatY + 1, 3, 3);
         
-        // Add border
-        ctx.strokeStyle = '#808080';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(this.x, floatY, this.width, this.height);
     }
 }
-
-
 
 // Start the game when the page loads
 let game;
