@@ -36,6 +36,7 @@ Release mode includes:
   • Inlining of assets into HTML
   • Console statement stripping
   • Maximum compression
+  • Timestamped files to prevent caching
 `);
     process.exit(0);
 }
@@ -86,6 +87,57 @@ function log(message, level = 'info') {
 
 function escapeRegex(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function addTimestampsToFiles(targetDir) {
+    const timestamp = Date.now();
+    const files = await fs.readdir(targetDir);
+    
+    for (const file of files) {
+        const filePath = path.join(targetDir, file);
+        const stats = await fs.stat(filePath);
+        
+        if (stats.isFile()) {
+            const ext = path.extname(file);
+            
+            // Only timestamp JavaScript files
+            if (ext === '.js') {
+                const name = path.basename(file, ext);
+                const newName = `${name}-${timestamp}${ext}`;
+                const newPath = path.join(targetDir, newName);
+                
+                // Rename the JavaScript file
+                await fs.move(filePath, newPath);
+                log(`📝 Renamed ${file} to ${newName}`, 'info');
+            }
+        }
+    }
+    
+    // Now update HTML files to reference the timestamped scripts
+    const htmlFiles = files.filter(f => f.endsWith('.html'));
+    for (const htmlFile of htmlFiles) {
+        const htmlPath = path.join(targetDir, htmlFile);
+        let htmlContent = await fs.readFile(htmlPath, 'utf8');
+        
+        // Update script.js references to include timestamp
+        htmlContent = htmlContent.replace(
+            /src="script\.js"/g,
+            `src="script-${timestamp}.js"`
+        );
+        
+        // Update any other .js references to include timestamp
+        htmlContent = htmlContent.replace(
+            /src="([^"]*\.js)"/g,
+            (match, scriptPath) => {
+                const scriptName = path.basename(scriptPath, '.js');
+                const scriptExt = path.extname(scriptPath);
+                return `src="${scriptName}-${timestamp}${scriptExt}"`;
+            }
+        );
+        
+        await fs.writeFile(htmlPath, htmlContent, 'utf8');
+        log(`🔗 Updated HTML references in ${htmlFile}`, 'info');
+    }
 }
 
 function stripConsoleStatements(content) {
@@ -555,6 +607,10 @@ async function build() {
         await fs.copy(srcDir, targetDir);
         log('📁 Copied source files to target directory', 'info');
         
+        // Add timestamps to files to prevent caching
+        await addTimestampsToFiles(targetDir);
+        log('⏰ Added timestamps to files', 'info');
+        
         // Process all files recursively
         await processDirectory(targetDir);
         log('⚙️  Finished processing all files', 'info');
@@ -562,9 +618,12 @@ async function build() {
         if (releaseMode) {
             log('🔧 Starting release mode optimizations...', 'info');
             
+            // Get timestamped files
             const htmlFiles = (await fs.readdir(targetDir)).filter(f => f.endsWith('.html'));
             const jsFiles = (await fs.readdir(targetDir)).filter(f => f.endsWith('.js'));
             const cssFiles = (await fs.readdir(targetDir)).filter(f => f.endsWith('.css'));
+            
+            log(`📁 Found ${htmlFiles.length} HTML files, ${jsFiles.length} JS files, ${cssFiles.length} CSS files`, 'info');
             
             // Strip console.log statements from JS files in release mode or when --strip-console is specified
             if (stripConsole) {
