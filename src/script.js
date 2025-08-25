@@ -303,8 +303,7 @@ class Game {
             }
             console.log('Initial button states stored:', this.initialButtonStates);
             
-            // Dump initial controller state for debugging
-            this.dumpControllerState(e.gamepad, 'Initial state (untouched)');
+
         });
         
         window.addEventListener('gamepaddisconnected', (e) => {
