@@ -174,6 +174,7 @@ class Game {
         this.proximityBombs = [];
         
         this.keys = {};
+        this.keys['StartPressed'] = false; // Initialize StartPressed flag
         this.lastTime = 0;
         this.enemySpawnTimer = 0;
         this.starSpawnTimer = 0;
@@ -253,6 +254,8 @@ class Game {
         this.currentState = this.states[stateName];
         if (this.currentState) {
             this.currentState.enter();
+        } else {
+            console.error('Failed to change state to:', stateName);
         }
     }
     
@@ -332,17 +335,17 @@ class Game {
         const controller = gamepads[0]; // Get fresh reference to first controller
         if (!controller) return;
         
+        // DEBUG: Log button 9 state
+        console.log('Button 9 state:', controller.buttons[9]?.pressed, 'StartPressed:', this.keys['StartPressed']);
+        
         // Update our stored controller reference
         this.controllers[0] = controller;
-        
-
         
         // Reset ALL controller-mapped keys to false first (assume no movement/action)
         this.keys['ControllerSpace'] = false;
         this.keys['ControllerQ'] = false;
         this.keys['ControllerShift'] = false;
         this.keys['ControllerC'] = false;
-        this.keys['ControllerStart'] = false;
         
         // Reset movement keys to false (assume no movement)
         this.keys['ArrowUp'] = false;
@@ -350,15 +353,20 @@ class Game {
         this.keys['ArrowLeft'] = false;
         this.keys['ArrowRight'] = false;
         
+        // Reset controller-mapped regular keys to false
+        this.keys['Space'] = false;
+        this.keys['Escape'] = false;
+        // Note: StartPressed is NOT reset here - it's handled in the button logic below
+        
         // Map controller buttons to controller-specific keys
         if (controller.buttons[0] && controller.buttons[0].pressed) { // A button
             this.keys['ControllerSpace'] = true; // Fire laser
-            if (Math.random() < 0.1) console.log('Controller: A button pressed (Fire)');
+            this.keys['Space'] = true; // Also for menu selection
         }
         
         if (controller.buttons[1] && controller.buttons[1].pressed) { // B button
             this.keys['ControllerQ'] = true; // Fire rocket
-            if (Math.random() < 0.1) console.log('Controller: B button pressed (Rocket)');
+
             // Add haptic feedback for rocket firing
             if (controller.vibrationActuator) {
                 controller.vibrationActuator.playEffect('dual-rumble', {
@@ -378,18 +386,31 @@ class Game {
             this.keys['ControllerC'] = true; // Cloak
         }
         
-        // Start button for pause/menu
+        // Select button (button 8) - no longer used for pause
+        // if (controller.buttons[8] && controller.buttons[8].pressed) { // Select button
+        //     // Removed pause functionality - now only Start button (button 9) pauses
+        // }
+        
+        // Start button (button 9) for pause/menu
         if (controller.buttons[9] && controller.buttons[9].pressed) { // Start button
             if (!this.keys['StartPressed']) { // Prevent multiple triggers
                 this.keys['StartPressed'] = true;
+                console.log('Button 9 pressed, setting StartPressed to true');
+                
+                // Handle pause/resume based on current state
                 if (this.currentState === this.states.gameplay) {
+                    console.log('Changing state to pause');
                     this.changeState('pause');
                 } else if (this.currentState === this.states.pause) {
+                    console.log('Changing state to gameplay (resuming)');
                     this.changeState('gameplay');
                 }
             }
         } else {
-            this.keys['StartPressed'] = false;
+            if (this.keys['StartPressed']) {
+                console.log('Button 9 released, resetting StartPressed to false');
+                this.keys['StartPressed'] = false;
+            }
         }
         
         // D-pad and analog stick movement
@@ -401,20 +422,16 @@ class Game {
         if (Math.abs(leftStickX) > deadzone) {
             if (leftStickX > 0) {
                 this.keys['ArrowRight'] = true;
-                if (Math.random() < 0.1) console.log('Controller: Right movement detected');
             } else {
                 this.keys['ArrowLeft'] = true;
-                if (Math.random() < 0.1) console.log('Controller: Left movement detected');
             }
         }
         
         if (Math.abs(leftStickY) > deadzone) {
             if (leftStickY > 0) {
                 this.keys['ArrowDown'] = true;
-                console.log('Controller: Down movement detected, ArrowDown set to true');
             } else {
                 this.keys['ArrowUp'] = true;
-                console.log('Controller: Up movement detected, ArrowUp set to true');
             }
         }
         
@@ -709,6 +726,11 @@ class MenuState extends GameState {
         ctx.fillStyle = '#888';
         ctx.font = '16px monospace';
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
+        
+        // Draw controller instructions if controller is connected
+        if (this.game.controllerConnected) {
+            ctx.fillText('Controller: A=Select, B=Back, Start=Pause', this.game.width / 2, 520);
+        }
     }
 }
 
@@ -1735,7 +1757,12 @@ class PauseState extends GameState {
         super(game);
     }
     
+    enter() {
+        console.log('PauseState entered');
+    }
+    
     render(ctx) {
+        console.log('PauseState rendering');
         // Render the gameplay state first (frozen)
         this.game.states.gameplay.render(ctx);
         
@@ -1754,14 +1781,12 @@ class PauseState extends GameState {
     }
     
     handleInput(keys) {
+        console.log('PauseState handleInput called, keys:', keys);
         if (keys['KeyM']) {
             this.game.changeState('menu'); // Go directly to main menu
         }
         
-        // Controller support - Start button to resume, Y button to menu
-        if (keys['StartPressed']) {
-            this.game.changeState('gameplay');
-        }
+        // Controller support - Y button to menu (Start button handled in main controller input)
         if (keys['KeyY'] || keys['ControllerC']) {
             this.game.changeState('menu');
         }
@@ -1962,6 +1987,11 @@ class SettingsState extends GameState {
         ctx.fillStyle = '#888';
         ctx.font = '16px monospace';
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
+        
+        // Draw controller instructions if controller is connected
+        if (this.game.controllerConnected) {
+            ctx.fillText('Controller: A=Select, B=Back, Start=Pause', this.game.width / 2, 520);
+        }
     }
     
     handleInput(keys) {
@@ -2016,7 +2046,7 @@ class HighScoreState extends GameState {
     }
 
     handleInput(keys) {
-        if ((keys['Enter'] || keys['Space'] || keys['Escape']) && this.enterCooldown <= 0) {
+        if ((keys['Enter'] || keys['Space'] || keys['Escape'] || keys['ControllerSpace'] || keys['ControllerQ']) && this.enterCooldown <= 0) {
             this.selectOption();
         }
     }
@@ -2050,11 +2080,12 @@ class HighScoreState extends GameState {
         const highScores = this.getHighScores();
 
         // Draw high scores
-        ctx.font = '24px monospace';
+        ctx.font = '20px monospace';
         ctx.fillStyle = '#00ffff';
-        for (let i = 0; i < Math.min(10, highScores.length); i++) {
+        const maxScores = Math.min(10, highScores.length);
+        for (let i = 0; i < maxScores; i++) {
             const score = highScores[i];
-            const yPos = 220 + i * 35;
+            const yPos = 220 + i * 30;
             ctx.fillText(`${i + 1}. ${score.score.toLocaleString()} - Level ${score.level}`, this.game.width / 2, yPos);
         }
 
@@ -2066,10 +2097,24 @@ class HighScoreState extends GameState {
             ctx.fillText('Play a game to set your first score.', this.game.width / 2, 330);
         }
 
+        // Calculate position for return instruction to avoid overlap
+        const lastScoreY = maxScores > 0 ? 220 + (maxScores - 1) * 30 : 330;
+        const returnInstructionY = lastScoreY + 80; // Always 80px below the last score
+        
+        // Ensure the return instruction is within the visible area
+        const clampedReturnY = Math.min(returnInstructionY, this.game.height - 80);
+        
         // Draw back option
         ctx.fillStyle = '#00ffff';
         ctx.font = '20px monospace';
-        ctx.fillText('> Press ENTER or ESCAPE to return', this.game.width / 2, this.game.height - 100);
+        ctx.fillText('> Press ENTER or ESCAPE to return', this.game.width / 2, clampedReturnY);
+        
+        // Add controller instructions if controller is connected
+        if (this.game.controllerConnected) {
+            ctx.fillStyle = '#888';
+            ctx.font = '16px monospace';
+            ctx.fillText('Controller: A=Select, B=Back', this.game.width / 2, clampedReturnY + 30);
+        }
     }
 
     getHighScores() {
@@ -2187,6 +2232,11 @@ class HighScoreState extends GameState {
         ctx.fillStyle = '#888';
         ctx.font = '16px monospace';
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
+        
+        // Draw controller instructions if controller is connected
+        if (this.game.controllerConnected) {
+            ctx.fillText('Controller: A=Select, B=Back, Start=Pause', this.game.width / 2, 520);
+        }
     }
     
     handleInput(keys) {
@@ -2200,6 +2250,11 @@ class HighScoreState extends GameState {
         }
         if ((keys['Enter'] || keys['Space']) && this.enterCooldown <= 0) {
             this.selectOption();
+        }
+        
+        // Controller support - B button to go back
+        if (keys['Escape'] && this.enterCooldown <= 0) {
+            this.game.changeState('gameplay');
         }
     }
     
