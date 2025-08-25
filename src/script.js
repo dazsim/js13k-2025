@@ -366,16 +366,6 @@ class Game {
         
         if (controller.buttons[1] && controller.buttons[1].pressed) { // B button
             this.keys['ControllerQ'] = true; // Fire rocket
-
-            // Add haptic feedback for rocket firing
-            if (controller.vibrationActuator) {
-                controller.vibrationActuator.playEffect('dual-rumble', {
-                    startDelay: 0,
-                    duration: 200,
-                    weakMagnitude: 0.5,
-                    strongMagnitude: 0.5
-                });
-            }
         }
         
         if (controller.buttons[2] && controller.buttons[2].pressed) { // X button
