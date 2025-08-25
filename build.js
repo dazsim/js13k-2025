@@ -113,8 +113,13 @@ async function addTimestampsToFiles(targetDir) {
         }
     }
     
-    // Now update HTML files to reference the timestamped scripts
+    return timestamp; // Return the timestamp for use in HTML processing
+}
+
+async function updateHtmlScriptReferences(targetDir, timestamp) {
+    const files = await fs.readdir(targetDir);
     const htmlFiles = files.filter(f => f.endsWith('.html'));
+    
     for (const htmlFile of htmlFiles) {
         const htmlPath = path.join(targetDir, htmlFile);
         let htmlContent = await fs.readFile(htmlPath, 'utf8');
@@ -125,18 +130,8 @@ async function addTimestampsToFiles(targetDir) {
             `src="script-${timestamp}.js"`
         );
         
-        // Update any other .js references to include timestamp
-        htmlContent = htmlContent.replace(
-            /src="([^"]*\.js)"/g,
-            (match, scriptPath) => {
-                const scriptName = path.basename(scriptPath, '.js');
-                const scriptExt = path.extname(scriptPath);
-                return `src="${scriptName}-${timestamp}${scriptExt}"`;
-            }
-        );
-        
         await fs.writeFile(htmlPath, htmlContent, 'utf8');
-        log(`🔗 Updated HTML references in ${htmlFile}`, 'info');
+        log(`🔗 Updated script references in ${htmlFile}`, 'info');
     }
 }
 
@@ -608,8 +603,12 @@ async function build() {
         log('📁 Copied source files to target directory', 'info');
         
         // Add timestamps to files to prevent caching
-        await addTimestampsToFiles(targetDir);
+        const timestamp = await addTimestampsToFiles(targetDir);
         log('⏰ Added timestamps to files', 'info');
+        
+        // Update HTML files to reference timestamped scripts BEFORE processing
+        await updateHtmlScriptReferences(targetDir, timestamp);
+        log('🔗 Updated HTML script references', 'info');
         
         // Process all files recursively
         await processDirectory(targetDir);
