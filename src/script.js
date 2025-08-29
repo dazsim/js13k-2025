@@ -67,14 +67,14 @@ class GameState {
     // Converts SFXR-like JSON to zzfx params
     playSound(params) {
         const soundParams = [
-            params.sound_vol || 0.5,          // Volume
+            params.v || 0.5,          // Volume
             0,                                // Randomness
-            (params.p_base_freq || 0.5) * 2000, // Base frequency
-            params.p_env_attack || 0.01,      // Attack
-            params.p_env_sustain || 0.1,      // Sustain
-            params.p_env_decay || 0.2,        // Decay
+            (params.f || 0.5) * 2000, // Base frequency
+            params.a || 0.01,      // Attack
+            params.s || 0.1,      // Sustain
+            params.d || 0.2,        // Decay
             0,                                // Phase offset
-            params.p_freq_ramp || 0           // Frequency ramp
+            params.r || 0           // Frequency ramp
         ];
         this.zzfx(...soundParams);
     }
@@ -83,48 +83,48 @@ class GameState {
 const audioManager = new AudioManager();
 
 const laserSound = {
-    "p_env_attack": 0,
-    "p_env_sustain": 0.15,
-    "p_env_decay": 0.3,
-    "p_base_freq": 0.82,
-    "p_freq_ramp": -0.29,
-    "sound_vol": 0.25
+    "a": 0,
+    "s": 0.15,
+    "d": 0.3,
+    "f": 0.82,
+    "r": -0.29,
+    "v": 0.25
 };
 
 const rocketSound = {
-    "p_env_attack": 0.1,
-    "p_env_sustain": 0.2,
-    "p_env_decay": 0.4,
-    "p_base_freq": 0.3,
-    "p_freq_ramp": -0.15,
-    "sound_vol": 0.3
+    "a": 0.1,
+    "s": 0.2,
+    "d": 0.4,
+    "f": 0.3,
+    "r": -0.15,
+    "v": 0.3
 };
 
 const hitSound = {
-    "p_env_attack": 0,
-    "p_env_sustain": 0.1,
-    "p_env_decay": 0.2,
-    "p_base_freq": 0.2,
-    "p_freq_ramp": -0.5,
-    "sound_vol": 0.4
+    "a": 0,
+    "s": 0.1,
+    "d": 0.2,
+    "f": 0.2,
+    "r": -0.5,
+    "v": 0.4
 };
 
 const metalCollectSound = {
-    "p_env_attack": 0,
-    "p_env_sustain": 0.05,
-    "p_env_decay": 0.1,
-    "p_base_freq": 0.8,
-    "p_freq_ramp": 0.2,
-    "sound_vol": 0.3
+    "a": 0,
+    "s": 0.05,
+    "d": 0.1,
+    "f": 0.8,
+    "r": 0.2,
+    "v": 0.3
 };
 
 const enemyDestroySound = {
-    "p_env_attack": 0,
-    "p_env_sustain": 0.1,
-    "p_env_decay": 0.3,
-    "p_base_freq": 0.4,
-    "p_freq_ramp": -0.3,
-    "sound_vol": 0.35
+    "a": 0,
+    "s": 0.1,
+    "d": 0.3,
+    "f": 0.4,
+    "r": -0.3,
+    "v": 0.35
 };
 
 // Static utility functions for common rendering tasks
