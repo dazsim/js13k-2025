@@ -133,13 +133,10 @@ class RU {
     static f24 = '24px monospace';
     static f16 = '16px monospace';
     static f20 = '20px monospace';
-    static drawStars(ctx, width, height, count = 100) {
+    static drawStars(ctx, game) {
         // Simple star field for menu/background
-        for (let i = 0; i < count; i++) {
-            const x = (i * 37) % width;
-            const y = (i * 73) % height;
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(x, y, 1, 1);
+        if (game.stars) {
+            game.stars.forEach(star => star.render(ctx));
         }
     }
 }
@@ -664,14 +661,14 @@ class MenuState extends GameState {
     
     render(ctx) {
         // Clear canvas
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = '#002';
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw Milky Way background first (behind everything)
         this.game.drawMilkyWay(ctx);
         
         // Draw stars background
-        RU.drawStars(ctx, this.game.width, this.game.height);
+        RU.drawStars(ctx,this.game);
         
         // Draw title
         ctx.fillStyle = '#fff';
@@ -1384,7 +1381,7 @@ class GameplayState extends GameState {
     
     render(ctx) {
         // Clear canvas
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = '#002';
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw Milky Way background first (behind everything)
@@ -1805,7 +1802,7 @@ class HighScoreState extends GameState {
 
     render(ctx) {
         // Clear canvas
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = '#002';
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw Milky Way background
@@ -1939,11 +1936,11 @@ class HighScoreState extends GameState {
     
     render(ctx) {
         // Clear canvas
-        ctx.fillStyle = '#000';
+        ctx.fillStyle = '#002';
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw stars background
-        RU.drawStars(ctx, this.game.width, this.game.height);
+        RU.drawStars(ctx, this.game);
         
         // Draw title
         ctx.fillStyle = '#fff';
