@@ -128,7 +128,11 @@ const enemyDestroySound = {
 };
 
 // Static utility functions for common rendering tasks
-class RenderUtils {
+class RU {
+    static f48 = '48px monospace';
+    static f24 = '24px monospace';
+    static f16 = '16px monospace';
+    static f20 = '20px monospace';
     static drawStars(ctx, width, height, count = 100) {
         // Simple star field for menu/background
         for (let i = 0; i < count; i++) {
@@ -231,8 +235,7 @@ class Game {
             win: new WinState(this),
             settings: new SettingsState(this),
             highscore: new HighScoreState(this),
-            shop: new ShopState(this),
-            controllerTest: new ControllerTestState(this)
+            shop: new ShopState(this)
         };
     }
     
@@ -666,11 +669,6 @@ class MenuState extends GameState {
             case 2: // High Score
                 this.game.changeState('highscore');
                 break;
-            case 3: // Controller Test (only available when controller connected)
-                if (this.game.controllerConnected) {
-                    this.game.changeState('controllerTest');
-                }
-                break;
         }
     }
     
@@ -683,23 +681,23 @@ class MenuState extends GameState {
         this.game.drawMilkyWay(ctx);
         
         // Draw stars background
-        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
+        RU.drawStars(ctx, this.game.width, this.game.height);
         
         // Draw title
         ctx.fillStyle = '#fff';
-        ctx.font = '48px monospace';
+        ctx.font = RU.f48;
         ctx.textAlign = 'center';
         ctx.fillText('Project Panther', this.game.width / 2, 150);
         
         // Draw subtitle
-        ctx.font = '24px monospace';
+        ctx.font = RU.f24;
         ctx.fillText('js13k 2025 Entry', this.game.width / 2, 200);
         
         // Draw menu options
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20;
         for (let i = 0; i < this.options.length; i++) {
             if (i === this.selectedOption) {
-                ctx.fillStyle = '#00ffff';
+                ctx.fillStyle = '#0ff';
                 ctx.fillText('> ' + this.options[i], this.game.width / 2, 300 + i * 40);
             } else {
                 ctx.fillStyle = '#fff';
@@ -709,7 +707,7 @@ class MenuState extends GameState {
         
         // Draw instructions
         ctx.fillStyle = '#888';
-        ctx.font = '16px monospace';
+        ctx.font = RU.f16;
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
         
         // Draw controller instructions if controller is connected
@@ -1435,7 +1433,7 @@ class GameplayState extends GameState {
     renderUI(ctx) {
         // Draw score
         ctx.fillStyle = '#fff';
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20;
         ctx.textAlign = 'left';
         ctx.fillText(`Score: ${this.game.gameData.score}`, 20, 30);
         
@@ -1482,7 +1480,7 @@ class GameplayState extends GameState {
             value: 1 - cooldownProgress, // Invert so full bar means ready
             maxValue: 1,
             backgroundColor: '#333',
-            foregroundColor: cooldownProgress > 0 ? '#ff6600' : '#00ff00', // Orange when cooldown, green when ready
+            foregroundColor: cooldownProgress > 0 ? '#f60' : '#0f0', // Orange when cooldown, green when ready
             borderColor: '#fff',
             textColor: '#fff',
             showSegments: false,
@@ -1494,7 +1492,7 @@ class GameplayState extends GameState {
     renderBar(ctx, options) {
         const {
             x, y, width, height, label, value, maxValue = 1,
-            backgroundColor = '#333', foregroundColor = '#00ff00',
+            backgroundColor = '#333', foregroundColor = '#0f0',
             borderColor = '#fff', textColor = '#fff',
             showSegments = false, segmentCount = 1,
             showBorder = true, showLabel = true
@@ -1544,7 +1542,7 @@ class GameplayState extends GameState {
         // Draw label
         if (showLabel) {
             ctx.fillStyle = textColor;
-            ctx.font = '14px monospace';
+            ctx.font = RU.f16;
             ctx.textAlign = 'center';
             ctx.fillText(label, x + width / 2, y + 15);
         }
@@ -1566,7 +1564,7 @@ class GameplayState extends GameState {
             label: 'CLOAK',
             value: this.game.player && this.game.player.isCloaked ? this.game.player.cloakLevel : 0,
             maxValue: 1,
-            foregroundColor: '#00ffff',
+            foregroundColor: '#0ff',
             showSegments: false
         });
     }
@@ -1582,7 +1580,7 @@ class GameplayState extends GameState {
             label: 'SHIELD',
             value: this.game.player.shieldLevel,
             maxValue: this.game.player.maxShieldLevel,
-            foregroundColor: '#00ff00',
+            foregroundColor: '#0f0',
             showSegments: true,
             segmentCount: this.game.player.maxShieldLevel
         });
@@ -1604,7 +1602,7 @@ class GameplayState extends GameState {
             label: 'TURBO',
             value: this.game.player.turboCharge,
             maxValue: this.game.player.maxTurboCharge,
-            foregroundColor: this.game.player.turboActive ? '#ff6600' : '#00ff00', // Orange when active, green when charged
+            foregroundColor: this.game.player.turboActive ? '#f60' : '#0f0', // Orange when active, green when charged
             showSegments: false
         });
     }
@@ -1622,9 +1620,6 @@ class PauseState extends GameState {
         super(game);
     }
     
-    enter() {
-    }
-    
     render(ctx) {
         // Render the gameplay state first (frozen)
         this.game.states.gameplay.render(ctx);
@@ -1634,11 +1629,11 @@ class PauseState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         ctx.fillStyle = '#fff';
-        ctx.font = '48px monospace';
+        ctx.font = RU.f48;
         ctx.textAlign = 'center';
         ctx.fillText('PAUSED', this.game.width / 2, this.game.height / 2 - 50);
         
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20;
         ctx.fillText('Press ESC to resume', this.game.width / 2, this.game.height / 2);
         ctx.fillText('Press M for menu', this.game.width / 2, this.game.height / 2 + 40);
     }
@@ -1679,17 +1674,17 @@ class GameOverState extends GameState {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
-        ctx.fillStyle = '#ff0000';
-        ctx.font = '48px monospace';
+        ctx.fillStyle = '#f00';
+        ctx.font = RU.f48;
         ctx.textAlign = 'center';
         ctx.fillText('GAME OVER', this.game.width / 2, this.game.height / 2 - 80);
         
         ctx.fillStyle = '#fff';
-        ctx.font = '24px monospace';
+        ctx.font = RU.f24;
         ctx.fillText(`Final Score: ${this.game.gameData.score}`, this.game.width / 2, this.game.height / 2 - 20);
         ctx.fillText(`High Score: ${this.game.gameData.highScore}`, this.game.width / 2, this.game.height / 2 + 20);
         
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20
         ctx.fillText('Press SPACE to restart', this.game.width / 2, this.game.height / 2 + 80);
         ctx.fillText('Press M for menu', this.game.width / 2, this.game.height / 2 + 120);
     }
@@ -1736,43 +1731,35 @@ class WinState extends GameState {
         ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
-        ctx.fillStyle = '#00ff00';
-        ctx.font = '48px monospace';
+        ctx.fillStyle = '#0f0';
+        ctx.font = RU.f48;
         ctx.textAlign = 'center';
         ctx.fillText('VICTORY!', this.game.width / 2, this.game.height / 2 - 120);
         
-        ctx.fillStyle = '#ffff00';
-        ctx.font = '24px monospace';
+        ctx.fillStyle = '#ff0';
+        ctx.font = RU.f24;
         ctx.fillText('You have defeated the Rat Boss!', this.game.width / 2, this.game.height / 2 - 60);
         ctx.fillText('Congratulations on completing the game!', this.game.width / 2, this.game.height / 2 - 20);
         
         ctx.fillStyle = '#fff';
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20;
         ctx.fillText(`Final Score: ${this.game.gameData.score}`, this.game.width / 2, this.game.height / 2 + 40);
         ctx.fillText(`Level Reached: ${this.game.gameData.level}`, this.game.width / 2, this.game.height / 2 + 80);
         ctx.fillText(`High Score: ${this.game.gameData.highScore}`, this.game.width / 2, this.game.height / 2 + 120);
         
-        ctx.font = '18px monospace';
+        ctx.font = RU.f20;
         ctx.fillText('Press SPACE to play again', this.game.width / 2, this.game.height / 2 + 180);
         ctx.fillText('Press M for main menu', this.game.width / 2, this.game.height / 2 + 220);
     }
     
     handleInput(keys) {
-        if (keys['Space']) {
-            // Reset game and start over
-            this.game.gameData.level = 1;
-            this.game.gameData.lives = 3;
-            this.game.gameData.score = 0;
-            this.game.gameData.metal = 0;
-            this.game.gameData.shopVisited = false;
-            this.game.changeState('gameplay');
-        }
+       
         if (keys['KeyM']) {
             this.game.changeState('menu');
         }
         
         // Controller support - A button to restart, Y button to menu
-        if (keys['KeyA'] || keys['ControllerSpace']) {
+        if (keys['KeyA'] || keys['ControllerSpace'] || keys['Space']) {
             // Reset game and start over
             this.game.gameData.level = 1;
             this.game.gameData.lives = 3;
@@ -1821,23 +1808,23 @@ class SettingsState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw stars background
-        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
+        RU.drawStars(ctx, this.game.width, this.game.height);
         
         // Draw title
         ctx.fillStyle = '#fff';
-        ctx.font = '48px monospace';
+        ctx.font = RU.f48;
         ctx.textAlign = 'center';
         ctx.fillText('Settings', this.game.width / 2, 150);
         
         // Draw subtitle
-        ctx.font = '24px monospace';
+        ctx.font = RU.f24;
         ctx.fillText('Game Configuration', this.game.width / 2, 200);
         
         // Draw options
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20;
         for (let i = 0; i < this.options.length; i++) {
             if (i === this.selectedOption) {
-                ctx.fillStyle = '#00ffff';
+                ctx.fillStyle = '#0ff';
                 ctx.fillText('> ' + this.options[i], this.game.width / 2, 300 + i * 40);
             } else {
                 ctx.fillStyle = '#fff';
@@ -1847,7 +1834,7 @@ class SettingsState extends GameState {
         
         // Draw instructions
         ctx.fillStyle = '#888';
-        ctx.font = '16px monospace';
+        ctx.font = RU.f16;
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
         
         // Draw controller instructions if controller is connected
@@ -1933,7 +1920,7 @@ class HighScoreState extends GameState {
         
         // Draw title
         ctx.fillStyle = '#fff';
-        ctx.font = '36px monospace';
+        ctx.font = RU.f24;
         ctx.textAlign = 'center';
         ctx.fillText('High Scores', this.game.width / 2, 150);
 
@@ -1941,8 +1928,8 @@ class HighScoreState extends GameState {
         const highScores = this.getHighScores();
 
         // Draw high scores
-        ctx.font = '20px monospace';
-        ctx.fillStyle = '#00ffff';
+        ctx.font = RU.f20;
+        ctx.fillStyle = '#0ff';
         const maxScores = Math.min(10, highScores.length);
         for (let i = 0; i < maxScores; i++) {
             const score = highScores[i];
@@ -1953,7 +1940,7 @@ class HighScoreState extends GameState {
         // If no scores yet
         if (highScores.length === 0) {
             ctx.fillStyle = '#888';
-            ctx.font = '20px monospace';
+            ctx.font = RU.f20;
             ctx.fillText('No high scores yet!', this.game.width / 2, 300);
             ctx.fillText('Play a game to set your first score.', this.game.width / 2, 330);
         }
@@ -1966,14 +1953,14 @@ class HighScoreState extends GameState {
         const clampedReturnY = Math.min(returnInstructionY, this.game.height - 80);
         
         // Draw back option
-        ctx.fillStyle = '#00ffff';
-        ctx.font = '20px monospace';
+        ctx.fillStyle = '#0ff';
+        ctx.font = RU.f20;
         ctx.fillText('> Press ENTER or ESCAPE to return', this.game.width / 2, clampedReturnY);
         
         // Add controller instructions if controller is connected
         if (this.game.controllerConnected) {
             ctx.fillStyle = '#888';
-            ctx.font = '16px monospace';
+            ctx.font = RU.f16;
             ctx.fillText('Controller: A=Select, B=Back', this.game.width / 2, clampedReturnY + 30);
         }
     }
@@ -2060,28 +2047,28 @@ class HighScoreState extends GameState {
         ctx.fillRect(0, 0, this.game.width, this.game.height);
         
         // Draw stars background
-        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
+        RU.drawStars(ctx, this.game.width, this.game.height);
         
         // Draw title
         ctx.fillStyle = '#fff';
-        ctx.font = '48px monospace';
+        ctx.font = RU.f48;
         ctx.textAlign = 'center';
         ctx.fillText('Shop', this.game.width / 2, 150);
         
         // Draw subtitle
-        ctx.font = '24px monospace';
+        ctx.font = RU.f24;
         ctx.fillText('Purchase Upgrades', this.game.width / 2, 200);
         
         // Draw metal count
-        ctx.fillStyle = '#00ff00';
-        ctx.font = '20px monospace';
+        ctx.fillStyle = '#0f0';
+        ctx.font = RU.f20;
         ctx.fillText(`Metal: ${this.game.gameData.metal}`, this.game.width / 2, 250);
         
         // Draw options
-        ctx.font = '20px monospace';
+        ctx.font = RU.f20;
         for (let i = 0; i < this.options.length; i++) {
             if (i === this.selectedOption) {
-                ctx.fillStyle = '#00ffff';
+                ctx.fillStyle = '#0ff';
                 ctx.fillText('> ' + this.options[i], this.game.width / 2, 300 + i * 40);
             } else {
                 ctx.fillStyle = '#fff';
@@ -2091,7 +2078,7 @@ class HighScoreState extends GameState {
         
         // Draw instructions
         ctx.fillStyle = '#888';
-        ctx.font = '16px monospace';
+        ctx.font = RU.f16;
         ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
         
         // Draw controller instructions if controller is connected
@@ -2182,7 +2169,7 @@ class HighScoreState extends GameState {
 
 // Base Particle class - must be defined before classes that extend it
 class Particle {
-    constructor(x, y, angle, speed = 2, size = 3, decay = 0.02, color = '#ffaa00') {
+    constructor(x, y, angle, speed = 2, size = 3, decay = 0.02, color = '#fa0') {
         this.x = x;
         this.y = y;
         this.vx = Math.cos(angle * Math.PI / 180) * speed;
@@ -2621,7 +2608,7 @@ class Player {
                  const rippleAlpha = (this.cloakLevel * 0.6) / (i + 1); // Fade outer rings
                  
                  ctx.globalAlpha = rippleAlpha;
-                 ctx.strokeStyle = '#00ffff'; // Cyan color for cloaking effect
+                 ctx.strokeStyle = '#0ff'; // Cyan color for cloaking effect
                  ctx.lineWidth = 2;
                  ctx.setLineDash([5, 5]); // Dashed line effect
                  ctx.lineDashOffset = time * 2; // Animate dash movement
@@ -2651,10 +2638,10 @@ class Player {
            
            // Create flame layers
            const flameLayers = [
-               { color: '#ff4400', size: 25, speed: 3, offset: 0 },      // Orange core
-               { color: '#ff6600', size: 20, speed: 2, offset: -4 },      // Bright orange
-               { color: '#ff8800', size: 15, speed: 1.5, offset: -8 },    // Medium orange
-               { color: '#ffaa00', size: 10, speed: 1, offset: -12 }      // Light orange
+               { color: '#f40', size: 25, speed: 3, offset: 0 },      // Orange core
+               { color: '#f60', size: 20, speed: 2, offset: -4 },      // Bright orange
+               { color: '#f80', size: 15, speed: 1.5, offset: -8 },    // Medium orange
+               { color: '#fa0', size: 10, speed: 1, offset: -12 }      // Light orange
            ];
            
            // Draw flame shapes using ellipses (simpler than complex paths)
@@ -2899,10 +2886,10 @@ class Enemy {
         const time = Date.now() * 0.005;
         if (this.game.player.isCloaked) {
             // Blinking green light when disabled
-            ctx.fillStyle = Math.sin(time * 3) > 0 ? '#00ff00' : '#003300';
+            ctx.fillStyle = Math.sin(time * 3) > 0 ? '#0f0' : '#030';
         } else {
             // Solid red light when active
-            ctx.fillStyle = '#ff0000';
+            ctx.fillStyle = '#f00';
         }
         
         // Draw status light on top of mouse
@@ -2959,7 +2946,7 @@ class Enemy {
         ctx.fillRect(billboardX, billboardY, billboardWidth, billboardHeight);
         
         // SHOP text
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#fff';
         ctx.font = `${shopHeight * 0.15}px monospace`;
         ctx.textAlign = 'center';
         ctx.fillText('SHOP', shopX + shopWidth / 2, billboardY + billboardHeight * 0.7);
@@ -3037,7 +3024,7 @@ class Enemy {
     
     drawSnakeEnemy(ctx) {
         // Draw snake body (segmented)
-        ctx.fillStyle = '#00ff00'; // Green
+        ctx.fillStyle = '#0f0'; // Green
         
         // Main body segments
         for (let i = 0; i < 3; i++) {
@@ -3047,16 +3034,16 @@ class Enemy {
         }
         
         // Head
-        ctx.fillStyle = '#008800';
+        ctx.fillStyle = '#080';
         ctx.fillRect(this.x + 24, this.y + 2, 10, 8);
         
         // Eyes
-        ctx.fillStyle = '#ff0000';
+        ctx.fillStyle = '#f00';
         ctx.fillRect(this.x + 26, this.y + 4, 2, 2);
         ctx.fillRect(this.x + 30, this.y + 4, 2, 2);
         
         // Tail
-        ctx.fillStyle = '#00aa00';
+        ctx.fillStyle = '#0a0';
         ctx.fillRect(this.x - 4, this.y + 4, 6, 4);
     }
     
@@ -3087,7 +3074,7 @@ class Enemy {
         
         // Draw beam when firing
         if (this._phase === 'firing') {
-            ctx.strokeStyle = '#ffff00';
+            ctx.strokeStyle = '#ff0';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(this.x + 30, this.y + 12);
@@ -3095,7 +3082,7 @@ class Enemy {
             ctx.stroke();
             
             // Beam glow effect
-            ctx.shadowColor = '#ffff00';
+            ctx.shadowColor = '#ff0';
             ctx.shadowBlur = 10;
             ctx.stroke();
             ctx.shadowBlur = 0;
@@ -3349,7 +3336,7 @@ class RatBoss extends Enemy {
         
         // Health bar
         const healthPercent = this.health / this.maxHealth;
-        ctx.fillStyle = healthPercent > 0.5 ? '#00ff00' : healthPercent > 0.25 ? '#ffff00' : '#ff0000';
+        ctx.fillStyle = healthPercent > 0.5 ? '#0f0' : healthPercent > 0.25 ? '#ff0' : '#f00';
         ctx.fillRect(barX, barY, barWidth * healthPercent, barHeight);
         
         // Border
@@ -3366,7 +3353,7 @@ class RatBoss extends Enemy {
     
     drawBossDetails(ctx) {
         // Eyes
-        ctx.fillStyle = '#ff0000';
+        ctx.fillStyle = '#f00';
         ctx.fillRect(this.x + this.width * 0.2, this.y + this.height * 0.2, 8, 8);
         ctx.fillRect(this.x + this.width * 0.7, this.y + this.height * 0.2, 8, 8);
         
@@ -3401,7 +3388,7 @@ class RatBoss extends Enemy {
     drawSpawnPauseIndicator(ctx) {
         // Draw a visual indicator that spawn attack is paused
         ctx.fillStyle = 'rgba(255, 255, 0, 0.7)';
-        ctx.font = '16px monospace';
+        ctx.font = RU.f16;
         ctx.textAlign = 'center';
         ctx.fillText('SPAWN PAUSED', this.x + this.width / 2, this.y - 30);
         
@@ -3431,7 +3418,7 @@ class BossExplosion {
         this.life = 1;
         this.decay = 0.02;
         this.size = Math.random() * 6 + 4;
-        this.color = ['#ff6600', '#ff0000', '#ffff00'][Math.floor(Math.random() * 3)];
+        this.color = ['#f60', '#f00', '#ff0'][Math.floor(Math.random() * 3)];
     }
     
     update(deltaTime) {
@@ -3451,7 +3438,7 @@ class BossExplosion {
 class DamageParticle extends Particle {
     constructor(x, y, angle, speed = 3) {
         const size = Math.random() * 3 + 2;
-        super(x, y, angle, speed, size, 0.05, '#ff0000');
+        super(x, y, angle, speed, size, 0.05, '#f00');
     }
     
     render(ctx) {
@@ -3466,7 +3453,7 @@ class DamageParticle extends Particle {
 class BeamDamageParticle extends Particle {
     constructor(x, y, angle, speed = 4) {
         const size = Math.random() * 4 + 3;
-        super(x, y, angle, speed, size, 0.08, '#ffff00'); // Yellow like the beam
+        super(x, y, angle, speed, size, 0.08, '#ff0'); // Yellow like the beam
     }
     
     render(ctx) {
@@ -3487,7 +3474,7 @@ class BeamDamageParticle extends Particle {
 class RocketExplosionParticle extends Particle {
     constructor(x, y, angle, speed = 5) {
         const size = Math.random() * 5 + 4;
-        const color = ['#ff6600', '#ff0000', '#ffff00', '#ff8800'][Math.floor(Math.random() * 4)];
+        const color = ['#f60', '#f00', '#ff0', '#f80'][Math.floor(Math.random() * 4)];
         super(x, y, angle, speed, size, 0.06, color);
     }
     
@@ -3617,7 +3604,7 @@ class ProximityBomb {
         // Draw movement trail (subtle red dots showing drift direction)
         if (this.age > 1000) { // Only show trail after 1 second
             ctx.globalAlpha = 0.3;
-            ctx.fillStyle = '#ff0000';
+            ctx.fillStyle = '#f00';
             for (let i = 1; i <= 3; i++) {
                 const trailX = this.x - Math.cos(this.driftDirection * Math.PI / 180) * i * 8;
                 const trailY = this.y - Math.sin(this.driftDirection * Math.PI / 180) * i * 8;
@@ -3628,11 +3615,11 @@ class ProximityBomb {
         
         // Blinking effect
         if (Math.floor(this.blinkTimer / this.blinkInterval) % 2 === 0) {
-            ctx.fillStyle = '#ff0000';
+            ctx.fillStyle = '#f00';
             ctx.fillRect(this.x, this.y, this.width, this.height);
             
             // Add glow effect
-            ctx.shadowColor = '#ff0000';
+            ctx.shadowColor = '#f00';
             ctx.shadowBlur = 8;
             ctx.fillRect(this.x, this.y, this.width, this.height);
             ctx.shadowBlur = 0;
@@ -3643,7 +3630,7 @@ class ProximityBomb {
 class ExplosionParticle extends Particle {
     constructor(x, y, angle, speed = 4) {
         const size = Math.random() * 4 + 2;
-        super(x, y, angle, speed, size, 0.05, '#ff6600');
+        super(x, y, angle, speed, size, 0.05, '#f60');
     }
 }
 
@@ -3665,7 +3652,7 @@ class Bullet {
     
     render(ctx) {
         
-        ctx.fillStyle = '#ffff00'; // Yellow
+        ctx.fillStyle = '#ff0'; // Yellow
         
         ctx.fillRect(this.x, this.y, this.width, this.height);
     }
@@ -3687,7 +3674,7 @@ class DiagonalBullet extends Bullet {
     }
     
     render(ctx) {
-        ctx.fillStyle = '#ff00ff'; // Magenta for diagonal bullets
+        ctx.fillStyle = '#f0f'; // Magenta for diagonal bullets
         ctx.fillRect(this.x, this.y, this.width, this.height);
     }
 }
@@ -3788,15 +3775,15 @@ class Rocket extends Bullet {
     render(ctx) {
         if (!this.deployed) {
             // Draw deploying rocket
-            ctx.fillStyle = '#888888';
+            ctx.fillStyle = '#888';
             ctx.fillRect(this.x, this.y, this.width, this.height);
         } else {
             // Draw active rocket
-            ctx.fillStyle = '#ff6600';
+            ctx.fillStyle = '#f60';
             ctx.fillRect(this.x, this.y, this.width, this.height);
             
             // Draw thruster flame
-            ctx.fillStyle = '#ffff00';
+            ctx.fillStyle = '#ff0';
             ctx.fillRect(this.x - 8, this.y + 1, 4, 4);
         }
     }
@@ -3807,7 +3794,7 @@ class SmokeParticle extends Particle {
         // Smoke particles use random direction instead of angle
         const randomAngle = Math.random() * 360;
         const size = Math.random() * 3 + 2;
-        super(x, y, randomAngle, 1, size, 0.02, '#666666');
+        super(x, y, randomAngle, 1, size, 0.02, '#666');
     }
 }
 
@@ -3831,7 +3818,7 @@ class Star {
     }
     
     render(ctx) {
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = '#fff';
         ctx.fillRect(this.x, this.y, 1, 1);
     }
 }
@@ -3839,14 +3826,14 @@ class Star {
 class HitSpark extends Particle {
     constructor(x, y, angle, speed = 4) {
         const size = Math.random() * 3 + 2; // Bigger than regular particles
-        super(x, y, angle, speed, size, 0.03, '#ffff00'); // Yellow sparks
+        super(x, y, angle, speed, size, 0.03, '#ff0'); // Yellow sparks
     }
 }
 
 class AsteroidExplosion extends Particle {
     constructor(x, y, angle) {
         const size = Math.random() * 4 + 3; // Bigger than regular particles
-        super(x, y, angle, 3, size, 0.015, '#ffff00'); // Faster speed, slower decay, yellow color
+        super(x, y, angle, 3, size, 0.015, '#ff0'); // Faster speed, slower decay, yellow color
     }
 }
 
@@ -3907,82 +3894,6 @@ class Metal {
         ctx.fillRect(this.x, floatY, this.width, this.height);
         
         
-    }
-}
-
-// Controller Test State
-class ControllerTestState extends GameState {
-    constructor(game) {
-        super(game);
-        this.testTimer = 0;
-        this.testDuration = 5000; // 5 seconds
-    }
-    
-    enter() {
-        this.testTimer = 0;
-    }
-    
-    update(deltaTime) {
-        this.testTimer += deltaTime;
-        
-        // Auto-return to menu after test duration
-        if (this.testTimer >= this.testDuration) {
-            this.game.changeState('menu');
-        }
-    }
-    
-    handleInput(keys) {
-        // Return to menu with any key or controller button
-        if (keys['Escape'] || keys['StartPressed'] || keys['KeyA'] || keys['KeyB'] || keys['KeyX'] || keys['KeyY']) {
-            this.game.changeState('menu');
-        }
-    }
-    
-    render(ctx) {
-        // Clear canvas
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, this.game.width, this.game.height);
-        
-        // Draw stars background
-        RenderUtils.drawStars(ctx, this.game.width, this.game.height);
-        
-        // Draw title
-        ctx.fillStyle = '#fff';
-        ctx.font = '48px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('Controller Test', this.game.width / 2, 150);
-        
-        // Draw controller status
-        if (this.game.controllerConnected) {
-            ctx.fillStyle = '#00ff00';
-            ctx.font = '24px monospace';
-            ctx.fillText('Controller Connected!', this.game.width / 2, 220);
-            
-            // Draw controller info
-            const controller = this.game.controllers[0];
-            if (controller) {
-                ctx.fillStyle = '#fff';
-                ctx.font = '18px monospace';
-                ctx.fillText(`Controller: ${controller.id}`, this.game.width / 2, 260);
-                ctx.fillText(`Buttons: ${controller.buttons.length}`, this.game.width / 2, 290);
-                ctx.fillText(`Axes: ${controller.axes.length}`, this.game.width / 2, 320);
-            }
-            
-            // Draw test instructions
-            ctx.fillStyle = '#888';
-            ctx.font = '16px monospace';
-            ctx.fillText('Press any button or move analog sticks to test', this.game.width / 2, 380);
-            ctx.fillText('Test will auto-return to menu in 5 seconds', this.game.width / 2, 410);
-        } else {
-            ctx.fillStyle = '#ff0000';
-            ctx.font = '24px monospace';
-            ctx.fillText('No Controller Connected', this.game.width / 2, 220);
-        }
-        
-        // Draw return instruction
-        ctx.fillStyle = '#888';
-        ctx.font = '16px monospace';
-        ctx.fillText('Press any key or button to return to menu', this.game.width / 2, 500);
     }
 }
 
