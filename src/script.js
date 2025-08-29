@@ -698,7 +698,7 @@ class MenuState extends GameState {
         // Draw instructions
         ctx.fillStyle = '#888';
         ctx.font = RU.f16;
-        ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
+        ctx.fillText('Use WASD or Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
         
         // Draw controller instructions if controller is connected
         if (this.game.controllerConnected) {
@@ -3272,13 +3272,7 @@ class RatBoss extends Enemy {
     }
     
     drawTailAttack(ctx) {
-        // Draw tail sweep effect
-        ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
-        ctx.lineWidth = 20;
-        ctx.beginPath();
-        ctx.moveTo(this.x + this.width, this.y + this.height * 0.5);
-        ctx.quadraticCurveTo(this.x + this.width + 100, this.y + this.height * 0.2, this.x + this.width + 150, this.y + this.height * 0.8);
-        ctx.stroke();
+        
     }
     
     drawSpawnPauseIndicator(ctx) {
@@ -3497,17 +3491,6 @@ class ProximityBomb {
     render(ctx) {
         if (this.exploded) return;
         
-        // Draw movement trail (subtle red dots showing drift direction)
-        if (this.age > 1000) { // Only show trail after 1 second
-            ctx.globalAlpha = 0.3;
-            ctx.fillStyle = '#f00';
-            for (let i = 1; i <= 3; i++) {
-                const trailX = this.x - Math.cos(this.driftDirection * Math.PI / 180) * i * 8;
-                const trailY = this.y - Math.sin(this.driftDirection * Math.PI / 180) * i * 8;
-                ctx.fillRect(trailX, trailY, 2, 2);
-            }
-            ctx.globalAlpha = 1;
-        }
         
         // Blinking effect
         if (Math.floor(this.blinkTimer / this.blinkInterval) % 2 === 0) {
@@ -3785,7 +3768,7 @@ class Metal {
         // Floating animation
         const floatY = this.y + Math.sin(this.floatOffset) * 3;
         
-        // Draw metal as a small grey/silver square with shine
+        // Draw metal as a small grey/silver square
         ctx.fillStyle = '#c0c0c0'; // Silver base
         ctx.fillRect(this.x, floatY, this.width, this.height);
         
