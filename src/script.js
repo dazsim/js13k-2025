@@ -183,10 +183,7 @@ class Game {
         this.controllers = [];
         this.controllerConnected = false;
         
-        // Frame rate tracking
-        this.frameCount = 0;
-        this.fps = 0;
-        this.fpsTimer = 0;
+       
         
         // Screen shake system
         this.screenShake = {
@@ -295,7 +292,6 @@ class Game {
         
         // Controller support
         window.addEventListener('gamepadconnected', (e) => {
-            console.log('Controller connected:', e.gamepad);
             this.controllers[e.gamepad.index] = e.gamepad;
             this.controllerConnected = true;
             
@@ -304,13 +300,11 @@ class Game {
             for (let i = 0; i < e.gamepad.buttons.length; i++) {
                 this.initialButtonStates[i] = e.gamepad.buttons[i]?.pressed || false;
             }
-            console.log('Initial button states stored:', this.initialButtonStates);
             
 
         });
         
         window.addEventListener('gamepaddisconnected', (e) => {
-            console.log('Controller disconnected:', e.gamepad);
             delete this.controllers[e.gamepad.index];
             this.controllerConnected = Object.keys(this.controllers).length > 0;
         });
@@ -333,7 +327,6 @@ class Game {
     // Initial button states stored: {0: false, 1: false, 2: false, 3: false, 4: false, 5: false, 6: false, 7: false, 8: false, 9: false, 10: false, 11: false, 12: false, 13: true, 14: false, 15: false, 16: false}updateControllerInput() {
         // Get the current gamepad state (required for fresh input data)
         const gamepads = navigator.getGamepads();
-        console.log('navigator.getGamepads() returned:', gamepads);
         let controller = gamepads[0];
 
         // find controller
@@ -344,15 +337,12 @@ class Game {
             }
         }
         
-        console.log('First controller from gamepads[0]:', controller);
+        
         
         if (!controller) {
-            console.log('No controller found, exiting updateControllerInput');
+            
             return;
         }
-        
-        // DEBUG: Log controller connection status
-        console.log('Controller found:', controller.index, 'connected:', controller.connected);
         
         // Update our stored controller reference
         this.controllers[0] = controller;
@@ -374,36 +364,22 @@ class Game {
         this.keys['Escape'] = false;
         // Note: StartPressed is NOT reset here - it's handled in the button logic below
         
-        // DEBUG: Log initial key states
-        console.log('Keys after reset:', {
-            ArrowUp: this.keys['ArrowUp'],
-            ArrowDown: this.keys['ArrowDown'],
-            ArrowLeft: this.keys['ArrowLeft'],
-            ArrowRight: this.keys['ArrowRight'],
-            Space: this.keys['Space'],
-            ControllerSpace: this.keys['ControllerSpace']
-        });
-        
         // Map controller buttons to controller-specific keys
         if (controller.buttons[0] && controller.buttons[0].pressed) { // A button
             this.keys['ControllerSpace'] = true; // Fire laser
             this.keys['Space'] = true; // Also for menu selection
-            console.log('A button pressed - Space keys set to true');
         }
         
         if (controller.buttons[1] && controller.buttons[1].pressed) { // B button
             this.keys['ControllerQ'] = true; // Fire rocket
-            console.log('B button pressed - ControllerQ set to true');
         }
         
         if (controller.buttons[2] && controller.buttons[2].pressed) { // X button
             this.keys['ControllerShift'] = true; // Turbo
-            console.log('X button pressed - ControllerShift set to true');
         }
         
         if (controller.buttons[3] && controller.buttons[3].pressed) { // Y button
             this.keys['ControllerC'] = true; // Cloak
-            console.log('Y button pressed - ControllerC set to true');
         }
         
         // Select button (button 8) - no longer used for pause
@@ -433,28 +409,21 @@ class Game {
         const leftStickX = controller.axes[0];
         const leftStickY = controller.axes[1];
         
-        // DEBUG: Log analog stick values
-        console.log('Analog sticks:', { x: leftStickX.toFixed(3), y: leftStickY.toFixed(3) });
-        
         // Map analog stick to movement (with deadzone) - map to actual arrow keys
         const deadzone = 0.1;
         if (Math.abs(leftStickX) > deadzone) {
             if (leftStickX > 0) {
                 this.keys['ArrowRight'] = true;
-                console.log('Right stick movement detected - ArrowRight set to true');
             } else {
                 this.keys['ArrowLeft'] = true;
-                console.log('Left stick movement detected - ArrowLeft set to true');
             }
         }
         
         if (Math.abs(leftStickY) > deadzone) {
             if (leftStickY > 0) {
                 this.keys['ArrowDown'] = true;
-                console.log('Down stick movement detected - ArrowDown set to true');
             } else {
                 this.keys['ArrowUp'] = true;
-                console.log('Up stick movement detected - ArrowUp set to true');
             }
         }
         
@@ -462,30 +431,17 @@ class Game {
         // Simplified D-pad handling - just check if buttons are pressed
         if (controller.buttons[12] && controller.buttons[12].pressed) { // D-pad up
             this.keys['ArrowUp'] = true;
-            console.log('D-pad up pressed - ArrowUp set to true');
         }
         if (controller.buttons[13] && controller.buttons[13].pressed) { // D-pad down
             this.keys['ArrowDown'] = true;
-            console.log('D-pad down pressed - ArrowDown set to true');
         }
         if (controller.buttons[14] && controller.buttons[14].pressed) { // D-pad left
             this.keys['ArrowLeft'] = true;
-            console.log('D-pad left pressed - ArrowLeft set to true');
         }
         if (controller.buttons[15] && controller.buttons[15].pressed) { // D-pad right
             this.keys['ArrowRight'] = true;
-            console.log('D-pad right pressed - ArrowRight set to true');
         }
         
-        // DEBUG: Log final key states
-        console.log('Final keys state:', {
-            ArrowUp: this.keys['ArrowUp'],
-            ArrowDown: this.keys['ArrowDown'],
-            ArrowLeft: this.keys['ArrowLeft'],
-            ArrowRight: this.keys['ArrowRight'],
-            Space: this.keys['Space'],
-            ControllerSpace: this.keys['ControllerSpace']
-        });
     }
     
     triggerScreenShake(intensity = 100, duration = 400) {
@@ -532,14 +488,7 @@ class Game {
         const deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
         
-        // Calculate FPS
-        this.frameCount++;
-        this.fpsTimer += deltaTime;
-        if (this.fpsTimer >= 1000) { // Update FPS every second
-            this.fps = this.frameCount;
-            this.frameCount = 0;
-            this.fpsTimer = 0;
-        }
+        
         
         this.update(deltaTime);
         this.render();
@@ -849,8 +798,7 @@ class GameplayState extends GameState {
         
         // Reset enemy pool for new level
         this.enemyPool = null;
-        
-        console.log(`Level ${level}: ${this.currentLevelData.description}`);
+
     }
     
     getLevelData(level) {
@@ -1078,7 +1026,6 @@ class GameplayState extends GameState {
         // Sort by priority to create varied spawning order
         this.enemyPool.sort((a, b) => a.priority - b.priority);
         
-        console.log(`Created enemy pool: ${this.enemyPool.length} enemies for level ${this.game.gameData.level}`);
     }
     
     spawnRandomEnemy() {
@@ -1162,7 +1109,6 @@ class GameplayState extends GameState {
     }
     
     completeLevel() {
-        console.log(`Level ${this.game.gameData.level} Complete!`);
         this.game.gameData.score += 1000; // Bonus for completing level
         
         // Check if this was the final level (level 10)
@@ -1224,7 +1170,6 @@ class GameplayState extends GameState {
                         // Create metal drop (mice drop 3, others drop 1)
                         this.createMetalDrop(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, enemy.enemyType);
                         
-                        console.log('Rocket destroyed enemy!');
                         return;
                     }
                     
@@ -1325,10 +1270,8 @@ class GameplayState extends GameState {
                 if (this.game.player.shieldLevel > 0) {
                     this.game.player.shieldLevel--;
                     this.game.player.shieldRechargeTimer = 0;
-                    console.log('Bird beam hit player! Shield damaged. Shields remaining:', this.game.player.shieldLevel);
                 } else {
                     this.game.gameData.lives--;
-                    console.log('Bird beam hit player! Life lost. Lives remaining:', this.game.gameData.lives);
                 }
                 
                 // Trigger hit effects on player
@@ -1505,30 +1448,6 @@ class GameplayState extends GameState {
         // Draw metal count
         ctx.fillText(`Metal: ${this.game.gameData.metal}`, 20, 120);
         
-        // Draw FPS below metal count
-        ctx.fillText(`FPS: ${this.game.fps}`, 20, 150);
-        
-        // Draw controller status
-        if (this.game.controllerConnected) {
-            ctx.fillStyle = '#00ff00';
-            ctx.fillText('Controller Connected', 20, 180);
-            
-            // Draw controller controls
-            ctx.fillStyle = '#888';
-            ctx.font = '14px monospace';
-            ctx.fillText('Controls: A=Fire, B=Rocket, X=Turbo, Start=Pause', 20, 200);
-            
-            // Debug: Show controller input values
-            const controller = this.game.controllers[0];
-            if (controller) {
-                ctx.fillStyle = '#ffff00';
-                ctx.font = '12px monospace';
-                ctx.fillText(`Stick: ${controller.axes[0]?.toFixed(2)}, ${controller.axes[1]?.toFixed(2)}`, 20, 220);
-                ctx.fillText(`A:${controller.buttons[0]?.pressed} B:${controller.buttons[1]?.pressed} X:${controller.buttons[2]?.pressed} Y:${controller.buttons[3]?.pressed}`, 20, 235);
-                ctx.fillText(`Arrow Keys: Up:${this.game.keys['ArrowUp']} Down:${this.game.keys['ArrowDown']} Left:${this.game.keys['ArrowLeft']} Right:${this.game.keys['ArrowRight']}`, 20, 250);
-                ctx.fillText(`Actions: Fire:${this.game.keys['ControllerSpace']} Rocket:${this.game.keys['ControllerQ']} Turbo:${this.game.keys['ControllerShift']}`, 20, 265);
-            }
-        }
         
         // Draw cloaking bar
         this.renderCloakingBar(ctx);
@@ -1692,99 +1611,9 @@ class GameplayState extends GameState {
     
     handleInput(keys) {
         // Escape handled globally in Game.bindEvents (toggle pause)
-        
-        // Dev controls with cooldowns
-        if ((keys['Digit0'] || keys['Key0']) && this.devCooldowns.metal <= 0) {
-            this.game.gameData.metal += 100;
-            console.log(`Added 100 metal! Total: ${this.game.gameData.metal}`);
-            this.devCooldowns.metal = 500; // 0.5 second cooldown
-        }
-        
-        if ((keys['Digit9'] || keys['Key9']) && this.devCooldowns.turbo <= 0) {
-            if (this.game.player) {
-                this.game.player.turboLevel = 1;
-                this.game.player.turboCharge = 5;
-                console.log('Turbo Thrust granted via dev controls!');
-                this.devCooldowns.turbo = 1000; // 1 second cooldown
-            }
-        }
-        
-        // Level navigation keys for testing with cooldowns
-        if ((keys['Digit1'] || keys['Key1']) && this.devCooldowns.levelNav <= 0) {
-            // Previous level (if greater than 1)
-            if (this.game.gameData.level > 1) {
-                const prevLevel = this.game.gameData.level - 1;
-                this.game.gameData.level = prevLevel;
-                this.setupLevel(prevLevel);
-                this.resetLevelState();
-                console.log(`Went to previous level: ${prevLevel}`);
-                this.devCooldowns.levelNav = 1000; // 1 second cooldown
-            } else {
-                console.log('Already at level 1');
-            }
-        } else if ((keys['Digit2'] || keys['Key2']) && this.devCooldowns.levelNav <= 0) {
-            // Next level (up to max level)
-            const maxLevel = 10; // Based on the levels we have defined
-            if (this.game.gameData.level < maxLevel) {
-                const nextLevel = this.game.gameData.level + 1;
-                this.game.gameData.level = nextLevel;
-                this.setupLevel(nextLevel);
-                this.resetLevelState();
-                console.log(`Went to next level: ${nextLevel}`);
-                this.devCooldowns.levelNav = 1000; // 1 second cooldown
-            } else {
-                console.log(`Already at max level: ${maxLevel}`);
-            }
-        }
-        
-        // Debug key (D) to show current level status
-        if (keys['KeyD'] && this.devCooldowns.levelNav <= 0) {
-            this.showLevelDebugInfo();
-            this.devCooldowns.levelNav = 500; // 0.5 second cooldown
-        }
     }
     
-    resetLevelState() {
-        // Reset level completion state
-        this.levelComplete = false;
-        
-        // Clear existing enemies and reset spawn counts
-        this.game.enemies = [];
-        this.game.particles = [];
-        this.game.metal = [];
-        this.spawnCounts = { asteroids: 0, mice: 0, shops: 0, snakes: 0, birds: 0, ratboss: 0 };
-        
-        // Reset enemy pool for new level
-        this.enemyPool = null;
-        
-        // Reset timers
-        this.game.enemySpawnTimer = 0;
-        
-        console.log(`Jumped to Level ${this.game.gameData.level}`);
-    }
     
-    showLevelDebugInfo() {
-        console.log('=== LEVEL DEBUG INFO ===');
-        console.log(`Current Level: ${this.game.gameData.level}`);
-        console.log(`Level Complete: ${this.levelComplete}`);
-        console.log(`Shop Visited: ${this.game.gameData.shopVisited}`);
-        
-        if (this.currentLevelData) {
-            console.log(`Level Description: ${this.currentLevelData.description}`);
-            console.log(`Level Objectives:`, this.levelObjectives);
-            console.log(`Spawn Rules:`, this.currentLevelData.spawnRules);
-        }
-        
-        console.log(`Spawn Counts:`, this.spawnCounts);
-        console.log(`Enemies on screen: ${this.game.enemies.length}`);
-        console.log(`Metal on screen: ${this.game.metal.length}`);
-        console.log(`Landmines on screen: ${this.game.proximityBombs.length}`);
-        console.log(`Enemy Pool: ${this.enemyPool ? this.enemyPool.length : 'null'}`);
-        console.log('========================');
-    }
-
-    
-
 }
 
 // Pause State
@@ -2045,7 +1874,6 @@ class SettingsState extends GameState {
         switch (this.selectedOption) {
             case 0: // Test Menu Item
                 // Could add test functionality here
-                console.log('Test menu item selected');
                 break;
             case 1: // Main Menu
                 this.game.goBack();
@@ -2303,20 +2131,15 @@ class HighScoreState extends GameState {
                     this.game.gameData.metal -= 50;
                     this.game.player.maxShieldLevel++;
                     this.game.player.shieldLevel = this.game.player.maxShieldLevel; // Refill shield
-                    console.log('Shield upgraded!');
+                    
                     this.selectionCooldown = this.selectionCooldownTime;
-                } else {
-                    console.log('Not enough metal!');
                 }
                 break;
             case 1: // Agility Boost
                 if (this.game.gameData.metal >= 30) {
                     this.game.gameData.metal -= 30;
                     this.game.player.speed += 50;
-                    console.log('Agility boosted!');
                     this.selectionCooldown = this.selectionCooldownTime;
-                } else {
-                    console.log('Not enough metal!');
                 }
                 break;
             case 2: // Turbo Thrust
@@ -2324,46 +2147,28 @@ class HighScoreState extends GameState {
                     this.game.gameData.metal -= 100;
                     this.game.player.turboLevel = 1; // Enable turbo
                     this.game.player.turboCharge = 5; // 5 seconds of turbo
-                    console.log('Turbo thrust acquired!');
                     this.selectionCooldown = this.selectionCooldownTime;
-                } else {
-                    console.log('Not enough metal!');
                 }
                 break;
             case 3: // Double Bullet
                 if (this.game.gameData.metal >= 80) {
                     this.game.gameData.metal -= 80;
                     this.game.player.doubleBulletLevel = 1;
-                    console.log('Double bullet acquired! Level:', this.game.player.doubleBulletLevel);
-                    console.log('Now firing 2 parallel bullets instead of 1');
                     this.selectionCooldown = this.selectionCooldownTime;
-                } else {
-                    console.log('Not enough metal!');
                 }
                 break;
             case 4: // Triple Bullet
                 if (this.game.gameData.metal >= 120) {
                     this.game.gameData.metal -= 120;
                     this.game.player.tripleBulletLevel = 1;
-                    console.log('Triple bullet acquired! Level:', this.game.player.tripleBulletLevel);
-                    if (this.game.player.doubleBulletLevel > 0) {
-                        console.log('Now firing 4 bullets total: 2 parallel + 2 diagonal');
-                    } else {
-                        console.log('Now firing 3 bullets total: 1 center + 2 diagonal');
-                    }
                     this.selectionCooldown = this.selectionCooldownTime;
-                } else {
-                    console.log('Not enough metal!');
                 }
                 break;
             case 5: // Rocket Launcher
                 if (this.game.gameData.metal >= 150) {
                     this.game.gameData.metal -= 150;
                     this.game.player.secondaryWeaponLevel = 1;
-                    console.log('Rocket launcher acquired!');
                     this.selectionCooldown = this.selectionCooldownTime;
-                } else {
-                    console.log('Not enough metal!');
                 }
                 break;
             case 6: // Return to Game
@@ -2731,7 +2536,6 @@ class Player {
             } else if (this.tripleBulletLevel > 0) {
                 upgradeInfo = 'Triple bullet (3 bullets)';
             }
-            console.log(`${upgradeInfo} - Total bullets: ${totalBullets}`);
         }
     }
     
@@ -2748,7 +2552,6 @@ class Player {
             
             this.game.bullets.push(new Rocket(this.x + this.width / 2, this.y + this.height / 2, this.game));
             this.rocketCooldown = this.rocketCooldownTime;
-            console.log('Rocket fired! Cooldown active for', (this.rocketCooldownTime / 1000).toFixed(1), 'seconds');
         }
     }
     
@@ -2930,7 +2733,6 @@ class Enemy {
         if (this.game && this.game.proximityBombs) {
             const bomb = new ProximityBomb(this.x, this.y, this.game);
             this.game.proximityBombs.push(bomb);
-            console.log(`Snake laid landmine at (${this.x}, ${this.y}) - Total landmines: ${this.game.proximityBombs.length}`);
         }
     }
     
@@ -3002,14 +2804,12 @@ class Enemy {
                 if (this.x <= this.game.width - 100) {
                     this._phase = 'firing';
                     this._firingTimer = 0;
-                    console.log('Bird started firing beam at (', this.x, ',', this.y, ')');
                 }
             } else if (this._phase === 'firing') {
                 // Stay in position and fire beam
                 this._firingTimer += deltaTime;
                 if (this._firingTimer > 3000) { // Fire for 3 seconds
                     this._phase = 'exiting';
-                    console.log('Bird finished firing beam, exiting');
                 }
             } else if (this._phase === 'exiting') {
                 // Fly out to left
@@ -3733,7 +3533,6 @@ class ProximityBomb {
         // Auto-despawn after lifetime
         if (this.age >= this.lifetime) {
             this.exploded = true; // Mark for removal
-            console.log(`Landmine auto-despawned after ${(this.lifetime / 1000).toFixed(1)}s at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
             return;
         }
         
@@ -3747,7 +3546,6 @@ class ProximityBomb {
             if (this.x < -this.width || this.x > this.game.width + this.width || 
                 this.y < -this.height || this.y > this.game.height + this.height) {
                 this.exploded = true;
-                console.log(`Landmine drifted off-screen at (${this.x.toFixed(1)}, ${this.y.toFixed(1)})`);
                 return;
             }
         }
@@ -3766,7 +3564,6 @@ class ProximityBomb {
     
     explode() {
         this.exploded = true;
-        console.log(`Landmine exploded at (${this.x}, ${this.y})`);
         
         // Create explosion particles
         for (let i = 0; i < 20; i++) {
@@ -3791,10 +3588,8 @@ class ProximityBomb {
                 if (this.game.player.shieldLevel > 0) {
                     this.game.player.shieldLevel--;
                     this.game.player.shieldRechargeTimer = 0;
-                    console.log('Landmine explosion hit player! Shield damaged. Shields remaining:', this.game.player.shieldLevel);
                 } else {
                     this.game.gameData.lives--;
-                    console.log('Landmine explosion hit player! Life lost. Lives remaining:', this.game.gameData.lives);
                 }
                 
                 // Trigger hit effects on player
@@ -3921,7 +3716,6 @@ class Rocket extends Bullet {
         // Auto-despawn after lifetime
         if (this.age >= this.lifetime) {
             this.deployed = true; // Mark for removal
-            console.log('Rocket auto-despawned after', (this.lifetime / 1000).toFixed(1), 'seconds');
             return;
         }
         
@@ -4197,47 +3991,5 @@ let game;
 window.addEventListener('load', () => {
     game = new Game();
     
-    // Expose controller debug functions to global scope for console access
-    window.dumpController = () => {
-        if (game) {
-            game.dumpCurrentControllerState();
-        } else {
-            console.log('Game not initialized yet');
-        }
-    };
-    
-    window.dumpControllerRaw = () => {
-        if (game && game.controllers && game.controllers.length > 0) {
-            const controller = game.controllers[0];
-            console.log('Raw controller object:', controller);
-            console.log('All axes:', controller.axes);
-            console.log('All buttons:', controller.buttons);
-        } else {
-            console.log('No controller connected');
-        }
-    };
-    
-    window.dumpKeys = () => {
-        if (game) {
-            console.log('Current keys state:', {
-                ArrowUp: game.keys['ArrowUp'],
-                ArrowDown: game.keys['ArrowDown'],
-                ArrowLeft: game.keys['ArrowLeft'],
-                ArrowRight: game.keys['ArrowRight'],
-                ControllerSpace: game.keys['ControllerSpace'],
-                ControllerQ: game.keys['ControllerQ']
-            });
-        } else {
-            console.log('Game not initialized yet');
-        }
-    };
-    
-    window.dumpInitialButtonStates = () => {
-        if (game) {
-            console.log('Initial button states:', game.initialButtonStates);
-        } else {
-            console.log('Game not initialized yet');
-        }
-    };
 });
 
