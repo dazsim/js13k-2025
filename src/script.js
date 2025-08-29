@@ -330,13 +330,29 @@ class Game {
     }
     
     updateControllerInput() {
+    // Initial button states stored: {0: false, 1: false, 2: false, 3: false, 4: false, 5: false, 6: false, 7: false, 8: false, 9: false, 10: false, 11: false, 12: false, 13: true, 14: false, 15: false, 16: false}updateControllerInput() {
         // Get the current gamepad state (required for fresh input data)
         const gamepads = navigator.getGamepads();
-        const controller = gamepads[0]; // Get fresh reference to first controller
-        if (!controller) return;
+        console.log('navigator.getGamepads() returned:', gamepads);
+        let controller = gamepads[0];
+
+        // find controller
+        for (let i = 0; i < gamepads.length; i++) {
+            controller = gamepads[i];
+            if (controller) {
+                break;
+            }
+        }
         
-        // DEBUG: Log button 9 state
-        console.log('Button 9 state:', controller.buttons[9]?.pressed, 'StartPressed:', this.keys['StartPressed']);
+        console.log('First controller from gamepads[0]:', controller);
+        
+        if (!controller) {
+            console.log('No controller found, exiting updateControllerInput');
+            return;
+        }
+        
+        // DEBUG: Log controller connection status
+        console.log('Controller found:', controller.index, 'connected:', controller.connected);
         
         // Update our stored controller reference
         this.controllers[0] = controller;
@@ -358,22 +374,36 @@ class Game {
         this.keys['Escape'] = false;
         // Note: StartPressed is NOT reset here - it's handled in the button logic below
         
+        // DEBUG: Log initial key states
+        console.log('Keys after reset:', {
+            ArrowUp: this.keys['ArrowUp'],
+            ArrowDown: this.keys['ArrowDown'],
+            ArrowLeft: this.keys['ArrowLeft'],
+            ArrowRight: this.keys['ArrowRight'],
+            Space: this.keys['Space'],
+            ControllerSpace: this.keys['ControllerSpace']
+        });
+        
         // Map controller buttons to controller-specific keys
         if (controller.buttons[0] && controller.buttons[0].pressed) { // A button
             this.keys['ControllerSpace'] = true; // Fire laser
             this.keys['Space'] = true; // Also for menu selection
+            console.log('A button pressed - Space keys set to true');
         }
         
         if (controller.buttons[1] && controller.buttons[1].pressed) { // B button
             this.keys['ControllerQ'] = true; // Fire rocket
+            console.log('B button pressed - ControllerQ set to true');
         }
         
         if (controller.buttons[2] && controller.buttons[2].pressed) { // X button
             this.keys['ControllerShift'] = true; // Turbo
+            console.log('X button pressed - ControllerShift set to true');
         }
         
         if (controller.buttons[3] && controller.buttons[3].pressed) { // Y button
             this.keys['ControllerC'] = true; // Cloak
+            console.log('Y button pressed - ControllerC set to true');
         }
         
         // Select button (button 8) - no longer used for pause
@@ -385,20 +415,16 @@ class Game {
         if (controller.buttons[9] && controller.buttons[9].pressed) { // Start button
             if (!this.keys['StartPressed']) { // Prevent multiple triggers
                 this.keys['StartPressed'] = true;
-                console.log('Button 9 pressed, setting StartPressed to true');
                 
                 // Handle pause/resume based on current state
                 if (this.currentState === this.states.gameplay) {
-                    console.log('Changing state to pause');
                     this.changeState('pause');
                 } else if (this.currentState === this.states.pause) {
-                    console.log('Changing state to gameplay (resuming)');
                     this.changeState('gameplay');
                 }
             }
         } else {
             if (this.keys['StartPressed']) {
-                console.log('Button 9 released, resetting StartPressed to false');
                 this.keys['StartPressed'] = false;
             }
         }
@@ -407,39 +433,59 @@ class Game {
         const leftStickX = controller.axes[0];
         const leftStickY = controller.axes[1];
         
+        // DEBUG: Log analog stick values
+        console.log('Analog sticks:', { x: leftStickX.toFixed(3), y: leftStickY.toFixed(3) });
+        
         // Map analog stick to movement (with deadzone) - map to actual arrow keys
         const deadzone = 0.1;
         if (Math.abs(leftStickX) > deadzone) {
             if (leftStickX > 0) {
                 this.keys['ArrowRight'] = true;
+                console.log('Right stick movement detected - ArrowRight set to true');
             } else {
                 this.keys['ArrowLeft'] = true;
+                console.log('Left stick movement detected - ArrowLeft set to true');
             }
         }
         
         if (Math.abs(leftStickY) > deadzone) {
             if (leftStickY > 0) {
                 this.keys['ArrowDown'] = true;
+                console.log('Down stick movement detected - ArrowDown set to true');
             } else {
                 this.keys['ArrowUp'] = true;
+                console.log('Up stick movement detected - ArrowUp set to true');
             }
         }
         
         // D-pad support (alternative movement) - map to actual arrow keys
-        // Filter out stuck buttons by checking if they were pressed in initial state
-        
+        // Simplified D-pad handling - just check if buttons are pressed
         if (controller.buttons[12] && controller.buttons[12].pressed) { // D-pad up
             this.keys['ArrowUp'] = true;
+            console.log('D-pad up pressed - ArrowUp set to true');
         }
         if (controller.buttons[13] && controller.buttons[13].pressed) { // D-pad down
             this.keys['ArrowDown'] = true;
+            console.log('D-pad down pressed - ArrowDown set to true');
         }
         if (controller.buttons[14] && controller.buttons[14].pressed) { // D-pad left
             this.keys['ArrowLeft'] = true;
+            console.log('D-pad left pressed - ArrowLeft set to true');
         }
         if (controller.buttons[15] && controller.buttons[15].pressed) { // D-pad right
             this.keys['ArrowRight'] = true;
+            console.log('D-pad right pressed - ArrowRight set to true');
         }
+        
+        // DEBUG: Log final key states
+        console.log('Final keys state:', {
+            ArrowUp: this.keys['ArrowUp'],
+            ArrowDown: this.keys['ArrowDown'],
+            ArrowLeft: this.keys['ArrowLeft'],
+            ArrowRight: this.keys['ArrowRight'],
+            Space: this.keys['Space'],
+            ControllerSpace: this.keys['ControllerSpace']
+        });
     }
     
     triggerScreenShake(intensity = 100, duration = 400) {
@@ -1748,11 +1794,9 @@ class PauseState extends GameState {
     }
     
     enter() {
-        console.log('PauseState entered');
     }
     
     render(ctx) {
-        console.log('PauseState rendering');
         // Render the gameplay state first (frozen)
         this.game.states.gameplay.render(ctx);
         
@@ -1771,7 +1815,6 @@ class PauseState extends GameState {
     }
     
     handleInput(keys) {
-        console.log('PauseState handleInput called, keys:', keys);
         if (keys['KeyM']) {
             this.game.changeState('menu'); // Go directly to main menu
         }
