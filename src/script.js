@@ -233,7 +233,6 @@ class Game {
             pause: new PauseState(this),
             gameOver: new GameOverState(this),
             win: new WinState(this),
-            settings: new SettingsState(this),
             highscore: new HighScoreState(this),
             shop: new ShopState(this)
         };
@@ -261,9 +260,7 @@ class Game {
     
     goBack() {
         // Hard-coded navigation based on current state
-        if (this.currentState === this.states.settings) {
-            this.changeState('menu'); // Settings always goes back to main menu
-        } else if (this.currentState === this.states.shop) {
+        if (this.currentState === this.states.shop) {
             this.changeState('gameplay'); // Shop always goes back to gameplay
         } else if (this.currentState === this.states.pause) {
             this.changeState('gameplay'); // Pause goes back to gameplay
@@ -608,15 +605,11 @@ class MenuState extends GameState {
     constructor(game) {
         super(game);
         this.selectedOption = 0;
-        this.options = ['Play Game', 'Settings', 'High Score'];
+        this.options = ['Play Game', 'High Score'];
         this.keyCooldown = 0;
         this.cooldownTime = 200; // 0.2 seconds in milliseconds
         this.enterCooldown = 0; // Will be set in enter() method
         
-        // Add controller test option if controller is connected
-        if (this.game.controllerConnected) {
-            this.options.push('Controller Test');
-        }
     }
     
     enter() {
@@ -663,10 +656,7 @@ class MenuState extends GameState {
             case 0: // Play Game
                 this.game.changeState('gameplay');
                 break;
-            case 1: // Settings
-                this.game.changeState('settings');
-                break;
-            case 2: // High Score
+            case 1: // High Score
                 this.game.changeState('highscore');
                 break;
         }
@@ -1774,100 +1764,6 @@ class WinState extends GameState {
     }
 }
 
-// Settings State
-class SettingsState extends GameState {
-    constructor(game) {
-        super(game);
-        this.selectedOption = 0;
-        this.options = ['Test Menu Item', 'Main Menu'];
-        this.keyCooldown = 0;
-        this.cooldownTime = 200; // 0.2 seconds in milliseconds
-        this.enterCooldown = 0; // Will be set in enter() method
-    }
-    
-    enter() {
-        this.keyCooldown = 0;
-        // Add a brief cooldown when entering to prevent immediate key press
-        this.enterCooldown = 300; // 0.3 seconds to prevent accidental selection
-    }
-    
-    update(deltaTime) {
-        // Update key cooldown
-        if (this.keyCooldown > 0) {
-            this.keyCooldown -= deltaTime;
-        }
-        // Update enter cooldown
-        if (this.enterCooldown > 0) {
-            this.enterCooldown -= deltaTime;
-        }
-    }
-    
-    render(ctx) {
-        // Clear canvas
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, this.game.width, this.game.height);
-        
-        // Draw stars background
-        RU.drawStars(ctx, this.game.width, this.game.height);
-        
-        // Draw title
-        ctx.fillStyle = '#fff';
-        ctx.font = RU.f48;
-        ctx.textAlign = 'center';
-        ctx.fillText('Settings', this.game.width / 2, 150);
-        
-        // Draw subtitle
-        ctx.font = RU.f24;
-        ctx.fillText('Game Configuration', this.game.width / 2, 200);
-        
-        // Draw options
-        ctx.font = RU.f20;
-        for (let i = 0; i < this.options.length; i++) {
-            if (i === this.selectedOption) {
-                ctx.fillStyle = '#0ff';
-                ctx.fillText('> ' + this.options[i], this.game.width / 2, 300 + i * 40);
-            } else {
-                ctx.fillStyle = '#fff';
-                ctx.fillText(this.options[i], this.game.width / 2, 300 + i * 40);
-            }
-        }
-        
-        // Draw instructions
-        ctx.fillStyle = '#888';
-        ctx.font = RU.f16;
-        ctx.fillText('Use Arrow Keys to navigate, Enter to select', this.game.width / 2, 500);
-        
-        // Draw controller instructions if controller is connected
-        if (this.game.controllerConnected) {
-            ctx.fillText('Controller: A=Select, B=Back, Start=Pause', this.game.width / 2, 520);
-        }
-    }
-    
-    handleInput(keys) {
-        if (keys['ArrowUp'] && this.keyCooldown <= 0) {
-            this.selectedOption = (this.selectedOption - 1 + this.options.length) % this.options.length;
-            this.keyCooldown = this.cooldownTime;
-        }
-        if (keys['ArrowDown'] && this.keyCooldown <= 0) {
-            this.selectedOption = (this.selectedOption + 1) % this.options.length;
-            this.keyCooldown = this.cooldownTime;
-        }
-        if ((keys['Enter'] || keys['Space']) && this.enterCooldown <= 0) {
-            this.selectOption();
-        }
-    }
-    
-    selectOption() {
-        switch (this.selectedOption) {
-            case 0: // Test Menu Item
-                // Could add test functionality here
-                break;
-            case 1: // Main Menu
-                this.game.goBack();
-                break;
-        }
-    }
-}
 
 // High Score State
 class HighScoreState extends GameState {
