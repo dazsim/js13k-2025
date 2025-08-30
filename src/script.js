@@ -133,11 +133,48 @@ class RU {
     static f24 = '24px monospace';
     static f16 = '16px monospace';
     static f20 = '20px monospace';
+    static width = 40;
+    static height = 40;
+    
     static drawStars(ctx, game) {
         // Simple star field for menu/background
         if (game.stars) {
             game.stars.forEach(star => star.render(ctx));
         }
+    }
+
+    static drawShip(ctx, scale, x, y) {
+        // Draw black cat spaceship
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x, y, this.width*scale, this.height*scale);
+        
+        // Cat ears
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x + 5*scale, y - 10*scale, 8*scale, 10*scale);
+        ctx.fillRect(x + 27*scale, y - 10*scale, 8*scale, 10*scale);
+        
+        // Cat face
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(x + 8*scale, y + 5*scale, 8*scale, 8*scale);
+        ctx.fillRect(x + 24*scale, y + 5*scale, 8*scale, 8*scale);
+        
+        // Cat nose
+        ctx.fillStyle = '#ff69b4';
+        ctx.fillRect(x + 18*scale, y + 15*scale, 4*scale, 4*scale);
+        
+        // Cat whiskers
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y + 20*scale);
+        ctx.lineTo(x + 5, y + 20*scale);
+        ctx.moveTo(x - 5, y + 25*scale);
+        ctx.lineTo(x + 5, y + 25*scale);
+        ctx.moveTo(x + this.width*scale + 5, y + 20*scale);
+        ctx.lineTo(x + this.width*scale - 5, y + 20*scale);
+        ctx.moveTo(x + this.width*scale + 5, y + 25*scale);
+        ctx.lineTo(x + this.width*scale - 5, y + 25*scale);
+        ctx.stroke();
     }
 }
 
@@ -230,6 +267,7 @@ class Game {
             pause: new PauseState(this),
             gameOver: new GameOverState(this),
             win: new WinState(this),
+            cover: new CoverState(this),
             highscore: new HighScoreState(this),
             shop: new ShopState(this)
         };
@@ -265,6 +303,8 @@ class Game {
             this.changeState('menu'); // Game over always goes back to main menu
         } else if (this.currentState === this.states.win) {
             this.changeState('menu'); // Win state goes back to main menu
+        } else if (this.currentState === this.states.cover) {
+            this.changeState('menu'); // Cover goes back to main menu
         }
         // If we're in gameplay or menu, goBack does nothing
     }
@@ -602,7 +642,7 @@ class MenuState extends GameState {
     constructor(game) {
         super(game);
         this.selectedOption = 0;
-        this.options = ['Play Game', 'High Score'];
+        this.options = ['Play Game', 'Cover', 'High Score'];
         this.keyCooldown = 0;
         this.cooldownTime = 200; // 0.2 seconds in milliseconds
         this.enterCooldown = 0; // Will be set in enter() method
@@ -653,7 +693,10 @@ class MenuState extends GameState {
             case 0: // Play Game
                 this.game.changeState('gameplay');
                 break;
-            case 1: // High Score
+            case 1: // Cover
+                this.game.changeState('cover');
+                break;
+            case 2: // High Score
                 this.game.changeState('highscore');
                 break;
         }
@@ -3770,6 +3813,66 @@ class Metal {
         ctx.fillRect(this.x, floatY, this.width, this.height);
         
         
+    }
+}
+
+// Cover State
+class CoverState extends GameState {
+    constructor(game) {
+        super(game);
+        this.enterCooldown = 0; // Will be set in enter() method
+    }
+    
+    enter() {
+        // Add a brief cooldown when entering to prevent immediate key press
+        this.enterCooldown = 300; // 0.3 seconds to prevent accidental return
+    }
+    
+    update(deltaTime) {
+        // Update enter cooldown
+        if (this.enterCooldown > 0) {
+            this.enterCooldown -= deltaTime;
+        }
+    }
+    
+    handleInput(keys) {
+        // Return to menu with any key or controller button, but only after cooldown
+        if (this.enterCooldown <= 0 && (keys['Escape'] || keys['Space'] || keys['Enter'] || keys['ControllerSpace'] || keys['ControllerQ'])) {
+            this.game.changeState('menu');
+        }
+    }
+    
+    render(ctx) {
+        // White background
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, this.game.width, this.game.height);
+        
+        // Calculate center position
+        const centerX = this.game.width / 2;
+        const centerY = this.game.height / 2;
+        
+        // Draw 320x320 black square in the middle
+        const squareSize = 320;
+        const squareX = centerX - squareSize / 2;
+        const squareY = centerY - squareSize / 2;
+        
+        ctx.fillStyle = '#005';
+        ctx.fillRect(squareX, squareY, squareSize, squareSize);
+        
+                                            // Draw "PROJECT" at the top
+                    ctx.fillStyle = '#fff';
+                    ctx.font = RU.f48;
+                    ctx.textAlign = 'center';
+                    ctx.fillText('PROJECT', centerX, centerY - 88);
+        
+        // Draw cat ship in the middle using helper method
+        RU.drawShip(ctx, 2, centerX - 40, centerY - 40);
+        
+        // Draw "PANTHER" at the bottom
+        ctx.fillStyle = '#fff';
+        ctx.font = RU.f48;
+        ctx.textAlign = 'center';
+        ctx.fillText('PANTHER', centerX, centerY + 120);
     }
 }
 
